@@ -199,6 +199,29 @@ export const SessionViewSchema = z.object({
 });
 export type SessionView = z.infer<typeof SessionViewSchema>;
 
+/**
+ * One CRM activity with everything needed to render it on its own page.
+ *
+ * The activity alone carries only ids; a detail view needs the lead it
+ * concerns and the call that produced it.
+ */
+export const ActivityDetailSchema = z.object({
+  activity: CRMActivitySchema,
+  lead: LeadSchema,
+  /** Null when the call has been lost to a restart. */
+  call: CallSchema.nullable(),
+});
+export type ActivityDetail = z.infer<typeof ActivityDetailSchema>;
+
+/** A session plus everything that happened in it. */
+export const SessionDetailSchema = z.object({
+  session: DialerSessionSchema,
+  /** Every call placed, newest first, hydrated with its lead. */
+  calls: z.array(LineViewSchema),
+  activities: z.array(CRMActivitySchema),
+});
+export type SessionDetail = z.infer<typeof SessionDetailSchema>;
+
 /** The one error envelope for the whole API. */
 export const ApiErrorSchema = z.object({
   error: z.object({

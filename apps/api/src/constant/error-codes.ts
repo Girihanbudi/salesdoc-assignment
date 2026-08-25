@@ -21,4 +21,8 @@ export const ERR = {
   CALL: {
     NOT_ACTIVE: 'CALL.NOT_ACTIVE',
   },
+
+  ACTIVITY: {
+    NOT_FOUND: 'ACTIVITY.NOT_FOUND',
+  },
 } as const;

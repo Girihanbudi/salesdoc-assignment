@@ -1,14 +1,18 @@
 import {
+  ActivityDetailSchema,
   CRMActivitySchema,
   CRMContactSchema,
   DialerSessionSchema,
   LeadSchema,
+  SessionDetailSchema,
   SessionViewSchema,
+  type ActivityDetail,
   type CRMActivity,
   type CRMContact,
   type DialerSession,
   type Disposition,
   type Lead,
+  type SessionDetail,
   type SessionView,
 } from '@salesdoc/shared';
 import { z } from 'zod';
@@ -111,4 +115,42 @@ export function getCrmContacts(): Promise<CRMContact[]> {
  */
 export function getCrmActivities(): Promise<CRMActivity[]> {
   return rawRequest(z.array(CRMActivitySchema), '/mock-crm/activities');
+}
+
+/**
+ * Lists every session this process has seen, newest first.
+ *
+ * @returns the session history
+ */
+export function getSessions(): Promise<DialerSession[]> {
+  return request(z.array(DialerSessionSchema), '/api/sessions');
+}
+
+/**
+ * Reads one session with every call and activity it produced.
+ *
+ * @param sessionId the session to read
+ * @returns the session detail
+ */
+export function getSessionDetail(sessionId: string): Promise<SessionDetail> {
+  return request(SessionDetailSchema, `/api/sessions/${sessionId}/detail`);
+}
+
+/**
+ * Lists our own record of every CRM activity, newest first.
+ *
+ * @returns the activities
+ */
+export function getActivities(): Promise<CRMActivity[]> {
+  return request(z.array(CRMActivitySchema), '/api/activities');
+}
+
+/**
+ * Reads one activity with the lead and call it concerns.
+ *
+ * @param callId the call that produced the activity
+ * @returns the activity detail
+ */
+export function getActivityDetail(callId: string): Promise<ActivityDetail> {
+  return request(ActivityDetailSchema, `/api/activities/${callId}`);
 }

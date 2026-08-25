@@ -2,6 +2,8 @@ import type {
   CreateSessionBody,
   DialerSession,
   EndCallBody,
+  LineView,
+  SessionDetail,
   SessionView,
 } from '@salesdoc/shared';
 import type { FastifyReply } from 'fastify';
@@ -99,4 +101,43 @@ export const endCall = (ctx: AppContext) =>
 
     ctx.dialer.endCall(session.id, request.params.callId, request.body);
     return ctx.sessions.findById(session.id);
+  });
+
+/**
+ * Every session this process has seen, newest first.
+ *
+ * @param ctx the app context
+ * @returns a handler resolving to the session history
+ */
+export const list =
+  (ctx: AppContext) =>
+  (): DialerSession[] =>
+    ctx.sessions.findAll();
+
+/**
+ * One session with every call it placed and every activity it wrote.
+ *
+ * Separate from the poll endpoint: that one is tuned for a live dashboard,
+ * this one is the after-the-fact log.
+ *
+ * @param ctx the app context
+ * @returns a handler resolving to the session detail
+ */
+export const detail = (ctx: AppContext) =>
+  withSession<SessionParams, SessionDetail>(ctx, (session) => {
+    const calls: LineView[] = ctx.calls
+      .findBySessionId(session.id)
+      .reverse()
+      .map((call) => ({
+        call,
+        lead: ctx.leads.findById(call.leadId),
+        crmSyncStatus: ctx.crm.getSyncStatus(call.id) ?? null,
+      }))
+      .filter((line): line is LineView => line.lead !== undefined);
+
+    return {
+      session,
+      calls,
+      activities: ctx.activities.findByCallIds(calls.map((line) => line.call.id)),
+    };
   });

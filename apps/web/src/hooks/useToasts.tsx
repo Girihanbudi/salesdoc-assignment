@@ -1,4 +1,12 @@
-import { useCallback, useRef, useState } from 'react';
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react';
 
 /** Severity, which drives both the colour and the icon. */
 export type ToastTone = 'error' | 'success' | 'info';
@@ -35,7 +43,7 @@ export interface ToastController {
  *
  * @returns the current toasts plus push and dismiss
  */
-export function useToasts(): ToastController {
+export function useToastQueue(): ToastController {
   const [toasts, setToasts] = useState<Toast[]>([]);
   const nextId = useRef(0);
   const timers = useRef(new Map<number, ReturnType<typeof setTimeout>>());
@@ -65,5 +73,39 @@ export function useToasts(): ToastController {
     [dismiss]
   );
 
-  return { toasts, push, dismiss };
+  return useMemo(() => ({ toasts, push, dismiss }), [toasts, push, dismiss]);
+}
+
+const ToastContext = createContext<ToastController | null>(null);
+
+/** Props for {@link ToastProvider}. */
+export interface ToastProviderProps {
+  children: ReactNode;
+}
+
+/**
+ * Makes the toast queue reachable from anywhere.
+ *
+ * Context rather than props because every screen can fail, and threading a
+ * controller through each page and route wrapper is how a screen ends up
+ * quietly not reporting its errors.
+ *
+ * @param props the tree to provide to
+ * @returns the provider
+ */
+export function ToastProvider({ children }: ToastProviderProps) {
+  const controller = useToastQueue();
+  return <ToastContext.Provider value={controller}>{children}</ToastContext.Provider>;
+}
+
+/**
+ * Reads the toast controller.
+ *
+ * @returns push and dismiss
+ * @throws when used outside {@link ToastProvider}
+ */
+export function useToast(): ToastController {
+  const controller = useContext(ToastContext);
+  if (controller === null) throw new Error('useToast must be used inside ToastProvider');
+  return controller;
 }

@@ -4,6 +4,8 @@ import type { Store } from '../db/store.js';
 /** Queries and writes against dialer sessions. */
 export interface SessionsRepository {
   findById: (id: string) => DialerSession | undefined;
+  /** Every session, most recently created first. */
+  findAll: () => DialerSession[];
   exists: (id: string) => boolean;
   save: (session: DialerSession) => void;
   /** Inserts a new session in the STOPPED state and returns it. */
@@ -19,6 +21,9 @@ export interface SessionsRepository {
 export function createSessionsRepository(store: Store): SessionsRepository {
   return {
     findById: (id) => store.sessions.get(id),
+    // Map preserves insertion order, so reversing gives newest first without
+    // needing a createdAt the brief's model does not have.
+    findAll: () => [...store.sessions.values()].reverse(),
     exists: (id) => store.sessions.has(id),
     save: (session) => {
       store.sessions.set(session.id, session);

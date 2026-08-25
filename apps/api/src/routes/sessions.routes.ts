@@ -19,6 +19,20 @@ import type { AppContext } from '../types/context.js';
  * @param ctx the app context handed to each handler
  */
 export function sessionRoutes(app: FastifyInstance, ctx: AppContext): void {
+  app.route({
+    method: 'GET',
+    url: '/api/sessions',
+    schema: { tags: ['sessions'], summary: 'Session history, newest first' },
+    handler: sessionsHandler.list(ctx),
+  });
+
+  app.route<{ Params: { id: string } }>({
+    method: 'GET',
+    url: '/api/sessions/:id/detail',
+    schema: { tags: ['sessions'], summary: 'A session with all its calls and activities' },
+    handler: sessionsHandler.detail(ctx),
+  });
+
   app.route<{ Body: CreateSessionBody }>({
     method: 'POST',
     url: '/api/sessions',

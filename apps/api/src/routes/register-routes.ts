@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { envelope } from '../server/envelope.js';
 import type { AppContext } from '../types/context.js';
+import { activityRoutes } from './activities.routes.js';
 import { healthRoutes } from './health.routes.js';
 import { leadRoutes } from './leads.routes.js';
 import { mockCrmRoutes } from './mock-crm.routes.js';
@@ -30,6 +31,7 @@ export async function registerRoutes(app: FastifyInstance, ctx: AppContext): Pro
     healthRoutes(api);
     leadRoutes(api, ctx);
     sessionRoutes(api, ctx);
+    activityRoutes(api, ctx);
   });
 
   await app.register(async (raw) => {

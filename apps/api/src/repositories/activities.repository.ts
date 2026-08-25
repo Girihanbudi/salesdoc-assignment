@@ -3,6 +3,9 @@ import type { Store } from '../db/store.js';
 
 /** Queries and writes against our own record of CRM activities. */
 export interface ActivitiesRepository {
+  /** Every activity, newest first. */
+  findAll: () => CRMActivity[];
+  findByCallId: (callId: string) => CRMActivity | undefined;
   findByLeadId: (leadId: string) => CRMActivity[];
   /** Activities for the given calls, newest first. */
   findByCallIds: (callIds: readonly string[]) => CRMActivity[];
@@ -17,6 +20,12 @@ export interface ActivitiesRepository {
  */
 export function createActivitiesRepository(store: Store): ActivitiesRepository {
   return {
+    findAll: () =>
+      [...store.activities.values()].sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
+
+    findByCallId: (callId) =>
+      [...store.activities.values()].find((activity) => activity.callId === callId),
+
     findByLeadId: (leadId) =>
       [...store.activities.values()].filter((activity) => activity.leadId === leadId),
 

@@ -22,7 +22,7 @@ export interface PollState<T> {
  * fetch so the view is never stale on return.
  *
  * @param fetcher the request to repeat; must be stable across renders
- * @param intervalMs delay between polls
+ * @param intervalMs delay between polls; 0 or less fetches once and stops
  * @param enabled set false to stop polling entirely
  * @returns the latest data, error, and loading state
  */
@@ -61,7 +61,10 @@ export function usePoll<T>(
     };
 
     void run();
-    const timer = setInterval(() => void run(), intervalMs);
+
+    // A one-shot fetch still wants the visibility handling below, so it shares
+    // this effect rather than getting a second hook.
+    const timer = intervalMs > 0 ? setInterval(() => void run(), intervalMs) : null;
 
     const onVisible = (): void => {
       if (!document.hidden) void run();
@@ -70,7 +73,7 @@ export function usePoll<T>(
 
     return () => {
       cancelled = true;
-      clearInterval(timer);
+      if (timer !== null) clearInterval(timer);
       document.removeEventListener('visibilitychange', onVisible);
     };
   }, [intervalMs, enabled, nonce]);
