@@ -9,8 +9,9 @@ as `CANCELED_BY_DIALER`. Every terminal call writes an idempotent CRM activity.
 Call outcomes are **mocked** — there is no telephony, no SIP, no Twilio. The
 substance is the concurrency-bounded state machine and the idempotent write-behind.
 
-`apps/api/src/dialer.ts` is the only genuinely interesting file. The rest is
-plumbing around it. Read it before changing anything that touches calls.
+`apps/api/src/controllers/dialer.controller.ts` is the only genuinely
+interesting file. The rest is plumbing around it. Read it before changing
+anything that touches calls.
 
 ## Stack & layout
 
@@ -19,7 +20,7 @@ plumbing around it. Read it before changing anything that touches calls.
 - Frontend: `apps/web/` — Vite + React 19 + Tailwind 4 (dev port **5173**)
 - Backend: `apps/api/` — Fastify 5 (dev port **3000**)
 - Shared: `packages/shared/` — zod schemas + inferred types, imported by both
-- Database: **none**. In-memory `Map`s in `apps/api/src/store.ts`, seeded on
+- Database: **none**. In-memory `Map`s in `apps/api/src/db/store.ts`, seeded on
   boot. State resets on restart — that is expected and documented in NOTES.md.
 
 In production a single Fastify process serves the API *and* `apps/web/dist`, on
@@ -30,6 +31,8 @@ to 3000. Same-origin in both, so there is no CORS anywhere and no base-URL env v
 
 - All tests: `npm test`
 - **Single test file: `npm test -- dialer`** — use this while iterating, not the full suite
+- Verify a change end to end: `docker compose up --build`, then hit the URLs.
+  The suite has twice missed things only the container caught.
 - Lint / format: `npm run lint`
 - Type check: `npm run typecheck`
 - Dev (both apps): `npm run dev`
@@ -40,8 +43,15 @@ to 3000. Same-origin in both, so there is no CORS anywhere and no base-URL env v
 - Import style: alias `@/` → that package's `src/`. Cross-package imports go
   through the workspace name (`@salesdoc/shared`), never a deep relative path.
   No `../../..` chains.
-- Env vars: none required to run locally. `PORT` and `NODE_ENV` are read in
-  production only. Never read or print `.env` — ask me for a value instead.
+- Env vars: none required to run locally — every one has a default, and
+  `.env.example` documents them. `constant/env.ts` is the only place that reads
+  `process.env`, and it validates once at startup rather than falling back on a
+  bad value.
+- **`.env.example` is readable and editable; every real `.env*` file is not.**
+  The deny list in `.claude/settings.json` enumerates them one by one rather
+  than using `.env.*`, because deny wins over allow in Claude Code — a wildcard
+  would block the committed template too. Add any new secret-bearing env file
+  to that list explicitly. Never read or print a real `.env`; ask me instead.
 
 ### Spec fidelity — this is graded work
 
