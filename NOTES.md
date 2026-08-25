@@ -119,8 +119,35 @@ it would consume a random value the harness does not have and throw.
 - routing: `/api/nonexistent` → 404 JSON envelope, `/some/client/route` → 200
   SPA fallback. The fallback must not swallow API 404s and does not.
 
+**`npm run dev` was broken, and nothing in the test suite could have caught
+it.** Every test drives Fastify through `inject()`, and the production path
+runs compiled JavaScript — so the dev entrypoint was the one path nothing
+exercised. Running the literal command from the brief showed the API process
+dying instantly: Node's `--experimental-strip-types` does not remap the
+`./app.js` specifier to `app.ts`, so the server never started and Vite proxied
+into a closed port. Switched to `tsx watch`. Verified by driving a full session
+through `localhost:5173` and watching it proxy to the API.
+
+The lesson: run the exact command the reader will run. A passing test suite says
+nothing about the command in your README.
+
+**The Docker build caught a bug that every local build hid.** `.dockerignore`
+excluded `dist/` but not `tsconfig.tsbuildinfo`, so the build stage received a
+build cache whose outputs were missing. `tsc --build` read it, concluded the
+project was already built, emitted nothing, and **exited 0**. A green build
+shipping an empty image. Locally it never reproduced, because the incremental
+cache and its outputs were both present. The first symptom was a misleading
+`Cannot find module '@salesdoc/shared'` in a later workspace — the cause was two
+steps upstream. Verified fixed by running the image end to end, not by trusting
+the build's exit code.
+
+The general lesson I applied afterwards: an exit code of 0 from a tool with a
+cache is not evidence that it did anything.
+
 **What I did not verify:** the deployed Render URL under a cold start, and any
-browser-level interaction beyond the two component tests. No load testing.
+browser-level interaction beyond the component tests. No load testing, and no
+check of behaviour when two agents drive the same session concurrently — there
+is no auth, so nothing prevents it.
 
 The seed data is deliberately split — four leads without a `crmExternalId`, two
 with — so the "create the contact first" branch runs on the first demo, not
