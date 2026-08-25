@@ -80,6 +80,10 @@ function run(cmd) {
     cwd: ROOT,
     encoding: 'utf8',
     shell: process.platform === 'win32',
+    // Default is 1MB, and vitest on a CI runner blows past it — spawnSync then
+    // returns ENOBUFS, which reads as "npm is broken" rather than "too much
+    // output". Nothing here streams, so there is no reason to cap it at all.
+    maxBuffer: Infinity,
   });
   if (r.error) return { ok: false, out: `${bin}: ${r.error.message}` };
   return { ok: r.status === 0, out: `${r.stdout ?? ''}${r.stderr ?? ''}`.trim() };
