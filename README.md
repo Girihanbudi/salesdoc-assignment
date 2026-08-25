@@ -146,7 +146,8 @@ so a conversation is never lost.
 | `apps/api/src/server/` | Fastify assembly, envelope, error handler, plugins |
 | `apps/api/src/test/harness.ts` | fake clock/random/timers for the engine |
 | `apps/web/src/pages/` | one component per route |
-| `apps/web/src/lib/fetcher.ts` | transport + the code-to-wording map |
+| `apps/web/src/lib/http.ts` | transport: response in, data or `ApiError` out |
+| `apps/web/src/constant/messages/` | one file per resource, mirroring `ERR` in the API |
 | `packages/shared/src/models/` | zod domain models, one per file, mirroring the brief |
 | `packages/shared/src/contracts/` | wire shapes: requests, read models, response envelope |
 
@@ -184,9 +185,11 @@ shapes. Codes are the contract; messages are not.
 | Method | Route | Purpose |
 |---|---|---|
 | `GET` | `/api/health` | liveness |
+| `GET` | `/api/me` | the signed-in agent |
 | `GET` | `/api/leads` | seeded leads |
 | `POST` | `/api/sessions` | create from `{ agentId, leadIds[] }` |
 | `GET` | `/api/sessions` | session history |
+| `GET` | `/api/sessions/active` | the agent's running session, or `null` |
 | `POST` | `/api/sessions/:id/start` | begin dialing |
 | `POST` | `/api/sessions/:id/stop` | cancel active calls |
 | `GET` | `/api/sessions/:id` | **the poll endpoint** — hydrated live view |
@@ -210,8 +213,15 @@ One container, one process, one port — Fastify serves the API *and* the built
 frontend.
 
 ```bash
-docker compose up --build        # http://localhost:3000
+npm run docker:up      # build + run, http://localhost:3000
+npm run docker:logs    # follow the logs
+npm run docker:down    # stop and remove
 ```
+
+**Docker Desktop must be running first.** If it is not, the command fails with
+`open //./pipe/dockerDesktopLinuxEngine: The system cannot find the file
+specified` — that named pipe only exists while Docker Desktop is up, and the
+message does not say so.
 
 That is the whole demo path if you would rather not install Node. The compose
 file defines a single service, because the app is a single process and there is

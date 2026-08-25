@@ -16,6 +16,9 @@
     "dev": "concurrently -n api,web -c blue,green \"npm -w apps/api run dev\" \"npm -w apps/web run dev\"",
     "build": "npm -w packages/shared run build && npm -w apps/web run build && npm -w apps/api run build",
     "start": "node apps/api/dist/index.js",
+    "docker:up": "docker compose up --build",
+    "docker:down": "docker compose down",
+    "docker:logs": "docker compose logs -f",
     "test": "vitest",
     "lint": "eslint .",
     "typecheck": "tsc --build"
