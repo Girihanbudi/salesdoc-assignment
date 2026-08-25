@@ -382,3 +382,40 @@ describe('breadcrumbs', () => {
     expect(screen.queryByRole('navigation', { name: /breadcrumb/i })).not.toBeInTheDocument();
   });
 });
+
+describe('active section marker', () => {
+  it('marks the current section in the rail', async () => {
+    renderAt('/sessions');
+    await screen.findByRole('heading', { name: 'Sessions' });
+
+    const rail = screen.getByRole('navigation', { name: /sections/i });
+    // The marker moved out of className into a sibling element, so the thing
+    // worth guarding is that "which one is active" still reaches the DOM.
+    expect(within(rail).getByRole('link', { name: 'Sessions' })).toHaveAttribute(
+      'aria-current',
+      'page'
+    );
+    expect(within(rail).getByRole('link', { name: 'Dashboard' })).not.toHaveAttribute(
+      'aria-current'
+    );
+  });
+
+  it('moves the marker when the section changes', async () => {
+    const user = userEvent.setup();
+    renderAt('/dashboard');
+    await screen.findByRole('heading', { name: 'Dashboard' });
+
+    const rail = screen.getByRole('navigation', { name: /sections/i });
+    await user.click(within(rail).getByRole('link', { name: 'CRM activity' }));
+
+    await waitFor(() => {
+      expect(within(rail).getByRole('link', { name: 'CRM activity' })).toHaveAttribute(
+        'aria-current',
+        'page'
+      );
+    });
+    expect(within(rail).getByRole('link', { name: 'Dashboard' })).not.toHaveAttribute(
+      'aria-current'
+    );
+  });
+});

@@ -118,6 +118,8 @@ function BrandMark() {
  * @returns the top bar
  */
 function TopBar({ menuOpen, onToggleMenu }: { menuOpen: boolean; onToggleMenu: () => void }) {
+  const reduceMotion = useReducedMotion();
+
   return (
     <div className="mx-auto flex max-w-[86rem] items-center justify-between gap-3 px-4 py-4 sm:px-5 sm:py-5">
       <div className="flex min-w-0 items-center gap-3">
@@ -137,18 +139,39 @@ function TopBar({ menuOpen, onToggleMenu }: { menuOpen: boolean; onToggleMenu: (
       </div>
 
       <nav aria-label="Primary" className="hidden items-center gap-1 md:flex">
+        {/* Same one-marker trick as the rail. Both are on screen together on
+            desktop, so a sliding rail beside a snapping pill would read as a
+            bug in one of them. */}
         {NAV.map((item) => (
           <NavLink
             key={item.to}
             to={item.to}
-            className={({ isActive }) =>
-              cn(
-                'rounded-full px-4 py-2 text-sm font-medium transition-colors',
-                isActive ? 'bg-card shadow-[var(--shadow-card)]' : 'text-muted hover:text-ink'
-              )
-            }
+            className="relative rounded-full px-4 py-2 text-sm font-medium"
           >
-            {item.label}
+            {({ isActive }) => (
+              <>
+                {isActive && (
+                  <motion.span
+                    layoutId="topnav-active"
+                    aria-hidden
+                    className="absolute inset-0 rounded-full bg-card shadow-[var(--shadow-card)]"
+                    transition={
+                      reduceMotion
+                        ? { duration: 0 }
+                        : { type: 'spring', stiffness: 420, damping: 34 }
+                    }
+                  />
+                )}
+                <span
+                  className={cn(
+                    'relative transition-colors duration-200',
+                    isActive ? 'text-ink' : 'text-muted hover:text-ink'
+                  )}
+                >
+                  {item.label}
+                </span>
+              </>
+            )}
           </NavLink>
         ))}
       </nav>
@@ -269,9 +292,17 @@ function AgentBadge() {
  *
  * Hidden below `md`, where the burger menu takes over.
  *
+ * The dark disc is **one element**, not a background on each button. Sharing a
+ * `layoutId` means motion animates it from wherever it was to wherever it now
+ * belongs, so switching pages slides the marker rather than blinking it out
+ * and in somewhere else. On first paint there is no previous position, so it
+ * simply appears under the active item.
+ *
  * @returns the rail
  */
 function Rail() {
+  const reduceMotion = useReducedMotion();
+
   return (
     <nav
       aria-label="Sections"
@@ -283,14 +314,33 @@ function Rail() {
           to={item.to}
           title={item.label}
           aria-label={item.label}
-          className={({ isActive }) =>
-            cn(
-              'grid size-11 place-items-center rounded-full transition-colors',
-              isActive ? 'bg-ink text-white' : 'text-muted hover:bg-black/5 hover:text-ink'
-            )
-          }
+          className="relative grid size-11 place-items-center rounded-full"
         >
-          <item.icon className="size-[18px]" aria-hidden />
+          {({ isActive }) => (
+            <>
+              {isActive && (
+                <motion.span
+                  layoutId="rail-active"
+                  aria-hidden
+                  className="absolute inset-0 rounded-full bg-ink"
+                  transition={
+                    reduceMotion
+                      ? { duration: 0 }
+                      : { type: 'spring', stiffness: 420, damping: 34 }
+                  }
+                />
+              )}
+              {/* Above the disc, and its own transition so the colour catches
+                  up with the marker arriving rather than flipping early. */}
+              <item.icon
+                className={cn(
+                  'relative size-[18px] transition-colors duration-200',
+                  isActive ? 'text-white' : 'text-muted hover:text-ink'
+                )}
+                aria-hidden
+              />
+            </>
+          )}
         </NavLink>
       ))}
 
