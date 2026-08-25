@@ -220,6 +220,16 @@ Claude's half of that line ends at **PR created**. Merging and tagging are the
 human's, always, no matter how the request is worded: a tag is a release, and
 whoever owns the release cuts it.
 
+**A release PR carries its own version bump.** Every `package.json` in the
+workspace shares one version, bumped in the same PR as the change it ships —
+`npm version <x.y.z> --workspaces --include-workspace-root --no-git-tag-version`,
+which updates the lockfile too. `--no-git-tag-version` matters: the tag is the
+human's, and npm would otherwise cut it. Semver against the commit types in
+the PR — a `fix` alone is a patch, any `feat` makes it a minor, a `!` makes it
+a major. The tag the human then cuts must match what `package.json` already
+says, so a bump left for later means shipping a build that misreports its own
+version.
+
 The PR needs the GitHub CLI (`gh --version` to check; `winget install
 GitHub.cli` if missing). `gh auth login` wants `read:org`, which the git
 credential does not carry, so authenticate per-command instead:
