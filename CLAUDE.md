@@ -55,10 +55,25 @@ to 3000. Same-origin in both, so there is no CORS anywhere and no base-URL env v
 
 ### Spec fidelity — this is graded work
 
-The field names in `packages/shared/src/schemas.ts` mirror the assignment brief
+The field names in `packages/shared/src/models/` mirror the assignment brief
 1:1. Do not rename, "improve", or add fields to the four spec'd models
 (`Lead`, `Call`, `DialerSession`, `CRMActivity`) without saying so explicitly —
 a grader diffs these against the brief.
+
+`packages/shared/src/` splits by what a shape is *for*:
+
+| Folder | Holds | Rule |
+|---|---|---|
+| `models/` | the domain, one file per model | mirrors the brief; never reshaped for a screen |
+| `contracts/` | request bodies, read models, response envelope | free to change as the UI needs |
+
+A read model (`SessionView`, `ActivityDetail`) is a `contracts/` file, never a
+`models/` one — otherwise the next screen's convenience starts editing shapes
+the grader is checking.
+
+`packages/shared/src/index.ts` is the package's entry point, not a barrel: it
+crosses a workspace boundary and needs one declared surface. Inside a package,
+import the module directly.
 
 Two deliberate deviations, already agreed, both documented in NOTES.md:
 1. `CallStatus` gains a non-terminal `DIALING`. The brief's five values remain

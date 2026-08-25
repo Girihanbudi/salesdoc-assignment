@@ -68,52 +68,54 @@ Three npm workspaces. `shared` is the contract; neither app talks to the other
 except through it.
 
 ```
-packages/shared          zod schemas -> the single source of truth for types
-        │                (server validates with them, client infers from them)
+packages/shared              zod models + wire contracts
+        │                    (the API validates with them, the client infers)
         ├──────────────┐
         ▼              ▼
 apps/api             apps/web
-  index.ts             App.tsx ──── usePoll(1.5s) ──┐
-  app.ts   ◄───────────────────────────────────────┘
-  dialer.ts   the state machine
-  crm.ts      idempotent write-behind
-  store.ts    in-memory Maps
+  routes/              pages/      one per route
+  handlers/            routes/     route table + paths
+  controllers/         components/ shell, cards, ui primitives
+  repositories/        hooks/      usePoll, useToasts
+  db/                  lib/        fetcher (transport + error mapping)
 ```
 
 In production there is **one process on one port**: Fastify serves the API *and*
-`apps/web/dist`. Same-origin in dev too (Vite proxies `/api` to `:3000`), so
-`fetch('/api/leads')` is identical in both and there is no CORS and no base-URL
-env var to get wrong.
+`apps/web/dist`. Same-origin in dev too (Vite proxies to `:3000`), so
+`fetch('/api/leads')` is identical in both — no CORS, no base-URL env var.
 
-### Layers
+### Server layers
 
-| Layer | File | Responsibility |
+One direction only; a lower layer never imports an upper one.
+
+```
+routes ──▶ handlers ──▶ controllers ──▶ repositories ──▶ db/store
+```
+
+| Layer | Responsibility | Never |
 |---|---|---|
-| HTTP | `app.ts` | parse → call engine → map to response. No business logic. |
-| Engine | `dialer.ts` | the state machine: lines, winner election, retries |
-| Integration | `crm.ts` | contact upsert + idempotent activity write |
-| Persistence | `store.ts` | in-memory `Map`s, seeded on boot |
-| Contract | `shared/schemas.ts` | models + request/response shapes |
+| `routes/` | uri, zod schema, handler reference | contains logic |
+| `handlers/` | map a controller result to a status | parses, queries, or decides |
+| `controllers/` | every business decision | touches `request`/`reply` |
+| `repositories/` | every read and write | contains rules |
+| `db/` | the in-memory Maps and the seed | contains queries |
 
-`app.ts` is deliberately thin — it never decides anything about calls. That is
-why the engine can be tested without HTTP, and the routes tested without timers.
+`container.ts` is the composition root — the only place that knows how the
+pieces connect. `dialer.controller.ts` is the one genuinely interesting file.
 
 ### The one design decision worth knowing
 
 Everything nondeterministic is **injected**, not imported:
 
 ```ts
-createDialer({ store, now, id, random, schedule, crm })
+createDialer({ sessions, calls, crmSync, clock, ring })
 ```
 
-Production passes `Date.now`, `randomUUID`, `Math.random`, and `setTimeout`.
-Tests pass a fake clock, a counter, a scripted random sequence, and a manual
-timer queue — so "line 1 connects, line 2 is cancelled" is asserted exactly,
-with no sleeping and no flake. `schedule` returns a *canceller*, which is what
+Production passes `Date`, `randomUUID`, `Math.random`, and `setTimeout`. Tests
+pass a fake clock, a counter, a scripted random sequence, and a manual timer
+queue — so "line 1 connects, line 2 is cancelled" is asserted exactly, with no
+sleeping and no flake. `clock.schedule` returns a *canceller*, which is what
 makes a losing line's pending outcome droppable.
-
-This is the only indirection in the codebase, and it is what makes the tests
-able to fail for the right reason.
 
 ### Request flow
 
@@ -122,7 +124,7 @@ POST /api/sessions      -> validate leadIds, build session (STOPPED)
 POST /:id/start         -> fillLines(): dial up to 2, schedule each outcome
    ...outcome fires     -> CONNECTED? claim winner, cancel the other line
                            otherwise: count it, free the line, refill
-   ...terminal          -> syncToCrm(): guard on callId, upsert contact,
+   ...terminal          -> crmSync: guard on callId, upsert contact,
                            write activity to BOTH stores
 GET  /api/sessions/:id  <- one hydrated payload; the client joins nothing
 POST /:id/calls/:cid/end-> agent's disposition -> CRM -> resume dialing
@@ -137,35 +139,70 @@ so a conversation is never lost.
 
 | Path | What |
 |---|---|
-| `apps/api/src/dialer.ts` | the state machine — **the interesting file** |
-| `apps/api/src/crm.ts` | mock CRM store + idempotent sync |
-| `apps/api/src/store.ts` | in-memory `Map`s, seeded on boot |
-| `apps/api/src/app.ts` | routes, validation, error envelope |
-| `apps/api/src/test-harness.ts` | fake clock/random/timers for the engine |
-| `apps/web/src/` | React dashboard, polls every 1.5s |
-| `packages/shared/src/schemas.ts` | zod models shared by both sides |
+| `apps/api/src/controllers/dialer.controller.ts` | the state machine — **the interesting file** |
+| `apps/api/src/controllers/crm-sync.controller.ts` | idempotency guard + orchestration |
+| `apps/api/src/mocks/mock-crm.client.ts` | stands in for the external CRM — the swap point |
+| `apps/api/src/db/store.ts` | the in-memory Maps |
+| `apps/api/src/server/` | Fastify assembly, envelope, error handler, plugins |
+| `apps/api/src/test/harness.ts` | fake clock/random/timers for the engine |
+| `apps/web/src/pages/` | one component per route |
+| `apps/web/src/lib/fetcher.ts` | transport + the code-to-wording map |
+| `packages/shared/src/models/` | zod domain models, one per file, mirroring the brief |
+| `packages/shared/src/contracts/` | wire shapes: requests, read models, response envelope |
 
 There is no database. State lives in memory and resets on restart — permitted by
 the brief, and noted in [NOTES.md](./NOTES.md).
 
+## Screens
+
+| Route | Shows |
+|---|---|
+| `/dashboard` | index cards, each opening its area |
+| `/dial` | lead picker; `?session=` shows the live board |
+| `/sessions` | session history |
+| `/sessions/:sessionId` | every call a session placed |
+| `/crm-activities` | everything written to the CRM |
+| `/crm-activities/:callId` | one record with its lead and call |
+
+`/` redirects to `/dashboard`; anything unmatched shows a 404 that names the bad
+path rather than silently bouncing.
+
 ## API
+
+Every response we own is wrapped in one envelope:
+
+```jsonc
+{ "success": true,  "data": {  }, "meta": { "requestId": "req-4", "timestamp": "..." } }
+{ "success": false, "error": { "code": "SESSION.NOT_FOUND", "message": "...",
+                               "details": [{ "path": "leadIds", "message": "..." }] },
+  "meta": {  } }
+```
+
+`success` is a literal, so a client discriminates on it rather than probing
+shapes. Codes are the contract; messages are not.
 
 | Method | Route | Purpose |
 |---|---|---|
 | `GET` | `/api/health` | liveness |
 | `GET` | `/api/leads` | seeded leads |
 | `POST` | `/api/sessions` | create from `{ agentId, leadIds[] }` |
+| `GET` | `/api/sessions` | session history |
 | `POST` | `/api/sessions/:id/start` | begin dialing |
 | `POST` | `/api/sessions/:id/stop` | cancel active calls |
-| `GET` | `/api/sessions/:id` | **the poll endpoint** — fully hydrated view |
+| `GET` | `/api/sessions/:id` | **the poll endpoint** — hydrated live view |
+| `GET` | `/api/sessions/:id/detail` | after-the-fact log |
 | `POST` | `/api/sessions/:id/calls/:callId/end` | wrap up the winner |
-| `GET` | `/leads/:id/crm-activities` | our record |
+| `GET` | `/api/activities` | our CRM record, newest first |
+| `GET` | `/api/activities/:callId` | one record + lead + call |
+| `GET` | `/leads/:id/crm-activities` | a lead's activities |
 | `GET` | `/mock-crm/contacts` | the mock CRM's contacts |
 | `GET` | `/mock-crm/activities` | the mock CRM's activities |
 
-Interactive docs at **`/docs`** (Swagger UI, generated from the zod schemas).
+**`/mock-crm/*` is deliberately not enveloped.** It stands in for a third
+party's system, and a real CRM would not adopt our response shape — keeping it
+raw makes the integration boundary visible in the response itself.
 
-Errors use one envelope: `{ error: { code, message, details? } }`.
+Interactive docs at **`/docs`** (Swagger UI, generated from the zod schemas).
 
 ## Deployment
 
