@@ -291,3 +291,43 @@ describe('polling lifecycle', () => {
     });
   });
 });
+
+describe('page transitions', () => {
+  it('renders the destination after navigating, not a blank frame', async () => {
+    // AnimatePresence mode="wait" holds the outgoing page until its exit
+    // finishes. A wrong key or a missing exit leaves nothing mounted.
+    const user = userEvent.setup();
+    renderAt('/dashboard');
+
+    // Heading, not nav — "Dashboard" also names two links.
+    await screen.findByRole('heading', { name: 'Dashboard' });
+
+    const [navLink] = screen.getAllByRole('link', { name: /CRM activity/i });
+    await user.click(navLink!);
+
+    expect(await screen.findByText(/everything written to the CRM/i)).toBeInTheDocument();
+  });
+
+  it('honours prefers-reduced-motion', async () => {
+    // jsdom reports no preference by default, so this has to be stubbed —
+    // otherwise the reduced-motion branch is never exercised anywhere.
+    vi.stubGlobal(
+      'matchMedia',
+      vi.fn((query: string) => ({
+        matches: query.includes('prefers-reduced-motion'),
+        media: query,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        addListener: vi.fn(),
+        removeListener: vi.fn(),
+        onchange: null,
+        dispatchEvent: vi.fn(),
+      }))
+    );
+
+    renderAt('/dashboard');
+
+    // The page must still render; reduced motion means no movement, not no UI.
+    expect(await screen.findByRole('heading', { name: 'Dashboard' })).toBeInTheDocument();
+  });
+});

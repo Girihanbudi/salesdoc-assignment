@@ -31,6 +31,17 @@
 }
 
 @layer base {
+  html {
+    /* Reserve the scrollbar's width permanently.
+     *
+     * Page transitions use AnimatePresence mode="wait", so for one frame the
+     * outgoing page has left and the incoming one has not mounted. The
+     * document collapses, the scrollbar disappears, the viewport gets ~15px
+     * wider, and the whole layout jumps sideways and back — the "shaking".
+     * Reserving the gutter means the width never changes. */
+    scrollbar-gutter: stable;
+  }
+
   body {
     background-color: var(--color-bg);
     color: var(--color-ink);

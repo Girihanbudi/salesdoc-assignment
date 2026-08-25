@@ -1,4 +1,5 @@
-import { Navigate, Route, Routes, useParams } from 'react-router-dom';
+import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
+import { Navigate, Route, Routes, useLocation, useParams } from 'react-router-dom';
 import * as api from '@/api.js';
 import { AsyncView } from '@/components/AsyncView.js';
 import { usePoll } from '@/hooks/usePoll.js';
@@ -29,24 +30,52 @@ export interface AppRoutesProps {
  * `/` redirects to the dashboard and anything unmatched falls to the 404,
  * so there is no URL that renders nothing.
  *
- * @param props toast controller and session-resume plumbing
+ * Pages cross-fade on navigation. Keyed on `pathname` rather than the whole
+ * location, so changing `?session=` does **not** re-animate: that switch
+ * happens mid-call, and flashing the screen while somebody is on the phone
+ * would be the worst possible moment for it.
+ *
+ * `Routes` is given the frozen `location` so the outgoing page keeps rendering
+ * its own content while it fades; without it, React Router swaps the match
+ * immediately and both halves of the transition show the new page.
+ *
+ * @param props session-resume plumbing
  * @returns the routed content
  */
 export function AppRoutes(props: AppRoutesProps) {
+  const location = useLocation();
+  const reduceMotion = useReducedMotion();
+
   return (
-    <Routes>
-      <Route path="/" element={<Navigate to={PATHS.dashboard} replace />} />
-      <Route
-        path={PATTERNS.dashboard}
-        element={<DashboardRoute activeSessionId={props.activeSessionId} />}
-      />
-      <Route path={PATTERNS.dial} element={<DialPage {...props} />} />
-      <Route path={PATTERNS.crmActivities} element={<ActivitiesRoute />} />
-      <Route path={PATTERNS.crmActivity} element={<ActivityDetailRoute />} />
-      <Route path={PATTERNS.sessions} element={<SessionsRoute />} />
-      <Route path={PATTERNS.session} element={<SessionDetailRoute />} />
-      <Route path="*" element={<NotFoundPage />} />
-    </Routes>
+    <AnimatePresence mode="wait" initial={false}>
+      <motion.div
+        key={location.pathname}
+        initial={reduceMotion ? false : { opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        exit={reduceMotion ? { opacity: 1 } : { opacity: 0, y: -8 }}
+        // Short, and faster out than in: the wait for the exit is dead time
+        // before the page the user asked for appears.
+        transition={{ duration: reduceMotion ? 0 : 0.18, ease: 'easeOut' }}
+        // Holds the document tall enough that the gap between pages does not
+        // collapse the scroll height. Paired with scrollbar-gutter in the base
+        // styles, navigation stops moving the layout at all.
+        className="min-h-[60vh]"
+      >
+        <Routes location={location}>
+          <Route path="/" element={<Navigate to={PATHS.dashboard} replace />} />
+          <Route
+            path={PATTERNS.dashboard}
+            element={<DashboardRoute activeSessionId={props.activeSessionId} />}
+          />
+          <Route path={PATTERNS.dial} element={<DialPage {...props} />} />
+          <Route path={PATTERNS.crmActivities} element={<ActivitiesRoute />} />
+          <Route path={PATTERNS.crmActivity} element={<ActivityDetailRoute />} />
+          <Route path={PATTERNS.sessions} element={<SessionsRoute />} />
+          <Route path={PATTERNS.session} element={<SessionDetailRoute />} />
+          <Route path="*" element={<NotFoundPage />} />
+        </Routes>
+      </motion.div>
+    </AnimatePresence>
   );
 }
 

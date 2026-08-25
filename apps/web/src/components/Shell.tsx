@@ -1,4 +1,5 @@
 import { Activity, LayoutGrid, ListOrdered, PhoneCall, Settings } from 'lucide-react';
+import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import type { ReactNode } from 'react';
 import { NavLink } from 'react-router-dom';
 import * as api from '@/api.js';
@@ -37,6 +38,8 @@ export interface ShellProps {
  * @returns the page frame around `children`
  */
 export function Shell({ title, subtitle, actions, children }: ShellProps) {
+  const reduceMotion = useReducedMotion();
+
   return (
     <div className="min-h-screen">
       <TopBar />
@@ -46,10 +49,23 @@ export function Shell({ title, subtitle, actions, children }: ShellProps) {
 
         <main className="min-w-0 flex-1 pt-2">
           <header className="mb-7 flex flex-wrap items-end justify-between gap-4">
-            <div>
-              <h1 className="text-4xl font-bold">{title}</h1>
-              <p className="mt-2 text-muted">{subtitle}</p>
-            </div>
+            {/* Keyed on the title so it crossfades with the page below it.
+                Without this the heading snaps to the new page's words while
+                the body is still fading out the old one. */}
+            <AnimatePresence mode="wait" initial={false}>
+              <motion.div
+                // Both, because a list and its detail page share a title and
+                // differ only in the line beneath it.
+                key={`${title}|${subtitle}`}
+                initial={reduceMotion ? false : { opacity: 0, y: 6 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={reduceMotion ? { opacity: 1 } : { opacity: 0, y: -6 }}
+                transition={{ duration: reduceMotion ? 0 : 0.18, ease: 'easeOut' }}
+              >
+                <h1 className="text-4xl font-bold">{title}</h1>
+                <p className="mt-2 text-muted">{subtitle}</p>
+              </motion.div>
+            </AnimatePresence>
             {actions}
           </header>
 
