@@ -13,9 +13,10 @@
  * dependency to a Python, Go, Rust, or any other project.)
  */
 import { spawnSync } from 'node:child_process';
+import { realpathSync } from 'node:fs';
 
 // ---------------------------------------------------------------------------
-// The stack: Node 22 + TypeScript, npm workspaces (apps/server, apps/web,
+// The stack: Node 22 + TypeScript, npm workspaces (apps/api, apps/web,
 // packages/shared). Return null from any step to skip it.
 // ---------------------------------------------------------------------------
 const CHECKS = {
@@ -46,14 +47,40 @@ async function readHookPayload() {
 }
 
 /**
- * Run one command, capturing combined output.
+ * The repo root. Every check runs from here regardless of the caller's cwd.
+ *
+ * Without this, an inherited cwd inside a workspace makes npm resolve to that
+ * workspace's package.json — so `npm run typecheck` fails with "Missing script"
+ * even though the root defines it.
+ *
+ * realpath matters on Windows: CLAUDE_PROJECT_DIR can arrive with a lowercase
+ * drive letter (`d:\...`), and ESM treats `d:\` and `D:\` as different modules.
+ * That silently gives vitest two copies of itself — the runner registers under
+ * one and the test files import the other, so every suite fails with
+ * "failed to find the runner". realpathSync.native returns the OS's own casing.
+ */
+const ROOT = (() => {
+  const raw = process.env.CLAUDE_PROJECT_DIR ?? process.cwd();
+  try {
+    return realpathSync.native(raw);
+  } catch {
+    return raw; // Path unreadable — let the checks themselves report why.
+  }
+})();
+
+/**
+ * Run one command from the repo root, capturing combined output.
  * @param {[string, string[]]|null} cmd tuple of [bin, args], or null to skip
  * @returns {{ok: boolean, out: string}} ok=true when skipped or exit 0
  */
 function run(cmd) {
   if (!cmd) return { ok: true, out: '' };
   const [bin, args] = cmd;
-  const r = spawnSync(bin, args, { encoding: 'utf8', shell: process.platform === 'win32' });
+  const r = spawnSync(bin, args, {
+    cwd: ROOT,
+    encoding: 'utf8',
+    shell: process.platform === 'win32',
+  });
   if (r.error) return { ok: false, out: `${bin}: ${r.error.message}` };
   return { ok: r.status === 0, out: `${r.stdout ?? ''}${r.stderr ?? ''}`.trim() };
 }

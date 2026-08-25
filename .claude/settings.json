@@ -38,8 +38,8 @@
       "Bash(mv:*)",
       "Bash(echo:*)",
       "Bash(which:*)",
-      "Bash(docker build:*)",
-      "Bash(docker run:*)"
+      "Bash(docker:*)",
+      "Bash(docker compose:*)"
     ],
     "ask": ["Bash(curl:*)", "Bash(wget:*)"],
     "deny": ["Read(./.env)", "Read(./.env.*)", "Read(./**/*.pem)", "Read(./**/*.key)"]

@@ -72,9 +72,9 @@ packages/shared          zod schemas -> the single source of truth for types
         │                (server validates with them, client infers from them)
         ├──────────────┐
         ▼              ▼
-apps/server        apps/web
-  index.ts           App.tsx ──── usePoll(1.5s) ──┐
-  app.ts   ◄─────────────────────────────────────┘
+apps/api             apps/web
+  index.ts             App.tsx ──── usePoll(1.5s) ──┐
+  app.ts   ◄───────────────────────────────────────┘
   dialer.ts   the state machine
   crm.ts      idempotent write-behind
   store.ts    in-memory Maps
@@ -137,11 +137,11 @@ so a conversation is never lost.
 
 | Path | What |
 |---|---|
-| `apps/server/src/dialer.ts` | the state machine — **the interesting file** |
-| `apps/server/src/crm.ts` | mock CRM store + idempotent sync |
-| `apps/server/src/store.ts` | in-memory `Map`s, seeded on boot |
-| `apps/server/src/app.ts` | routes, validation, error envelope |
-| `apps/server/src/test-harness.ts` | fake clock/random/timers for the engine |
+| `apps/api/src/dialer.ts` | the state machine — **the interesting file** |
+| `apps/api/src/crm.ts` | mock CRM store + idempotent sync |
+| `apps/api/src/store.ts` | in-memory `Map`s, seeded on boot |
+| `apps/api/src/app.ts` | routes, validation, error envelope |
+| `apps/api/src/test-harness.ts` | fake clock/random/timers for the engine |
 | `apps/web/src/` | React dashboard, polls every 1.5s |
 | `packages/shared/src/schemas.ts` | zod models shared by both sides |
 

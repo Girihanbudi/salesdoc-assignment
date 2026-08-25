@@ -9,7 +9,7 @@ as `CANCELED_BY_DIALER`. Every terminal call writes an idempotent CRM activity.
 Call outcomes are **mocked** — there is no telephony, no SIP, no Twilio. The
 substance is the concurrency-bounded state machine and the idempotent write-behind.
 
-`apps/server/src/dialer.ts` is the only genuinely interesting file. The rest is
+`apps/api/src/dialer.ts` is the only genuinely interesting file. The rest is
 plumbing around it. Read it before changing anything that touches calls.
 
 ## Stack & layout
@@ -17,9 +17,9 @@ plumbing around it. Read it before changing anything that touches calls.
 - Language / runtime: TypeScript on **Node 22** (pinned in `package.json` → `engines`)
 - Package manager: **npm workspaces** — use only this one. Never mix lockfiles.
 - Frontend: `apps/web/` — Vite + React 19 + Tailwind 4 (dev port **5173**)
-- Backend: `apps/server/` — Fastify 5 (dev port **3000**)
+- Backend: `apps/api/` — Fastify 5 (dev port **3000**)
 - Shared: `packages/shared/` — zod schemas + inferred types, imported by both
-- Database: **none**. In-memory `Map`s in `apps/server/src/store.ts`, seeded on
+- Database: **none**. In-memory `Map`s in `apps/api/src/store.ts`, seeded on
   boot. State resets on restart — that is expected and documented in NOTES.md.
 
 In production a single Fastify process serves the API *and* `apps/web/dist`, on
@@ -85,6 +85,42 @@ violations bounce back through the existing hook automatically.
 
 Document *why*, not *what*. `// increment i` is noise; a note about why the
 retry is capped at 3 is not.
+
+## Commit messages — Conventional Commits
+
+Every commit subject starts with a type prefix, per
+<https://www.conventionalcommits.org/en/v1.0.0/>:
+
+```
+<type>(<optional scope>): <subject>
+
+<body — why, not what>
+```
+
+| Type | Use for |
+|---|---|
+| `feat` | a new capability the user can see |
+| `fix` | a bug fix |
+| `refactor` | restructuring with no behaviour change |
+| `test` | adding or correcting tests only |
+| `docs` | README, NOTES, CLAUDE.md, comments |
+| `build` | Dockerfile, compose, deps, lockfile, bundler config |
+| `ci` | workflow files |
+| `chore` | housekeeping that fits nothing above |
+| `perf` | a change made for performance |
+| `style` | formatting only, no code change |
+
+Rules:
+
+- Subject in the **imperative mood**, lower case, no trailing period:
+  `fix: serve the frontend before registering routes`, not `Fixed serving...`.
+- Scope is the workspace or area when it narrows usefully: `feat(api):`,
+  `refactor(web):`, `build(docker):`.
+- **A refactor commit that changes behaviour is mislabelled.** If behaviour
+  changes, it is `feat` or `fix` — split the commit rather than blur the type.
+- Breaking changes get a `!` before the colon (`feat(api)!:`) and a
+  `BREAKING CHANGE:` footer explaining the migration.
+- The body explains *why*, not a list of files. `git diff` already lists files.
 
 ## Always
 

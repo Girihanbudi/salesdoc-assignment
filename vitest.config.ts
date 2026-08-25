@@ -5,8 +5,8 @@ export default defineConfig({
     projects: [
       {
         test: {
-          name: 'server',
-          root: './apps/server',
+          name: 'api',
+          root: './apps/api',
           environment: 'node',
           include: ['src/**/*.test.ts'],
           // The first fastify.inject() pays a one-time boot cost that can pass
