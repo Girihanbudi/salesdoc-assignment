@@ -2,7 +2,14 @@ import { cva, type VariantProps } from 'class-variance-authority';
 import type { ButtonHTMLAttributes } from 'react';
 import { cn } from '@/lib/utils.js';
 
-const buttonVariants = cva(
+/**
+ * Shared button styling.
+ *
+ * Exported so a `Link` can wear it: an empty state's call to action is a
+ * navigation, not a button, and it should not have to copy the classes to look
+ * like one.
+ */
+export const buttonVariants = cva(
   'inline-flex items-center justify-center gap-2 rounded-full text-sm font-medium transition-colors disabled:pointer-events-none disabled:opacity-40',
   {
     variants: {

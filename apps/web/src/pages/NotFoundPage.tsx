@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { Link } from 'react-router-dom';
+import { buttonVariants } from '@/components/ui/button.js';
 import { Card } from '@/components/ui/card.js';
 import { useToast } from '@/hooks/useToasts.js';
 import { PATHS } from '@/routes/paths.js';
@@ -30,7 +31,7 @@ export function NotFoundPage() {
       </p>
       <Link
         to={PATHS.dashboard}
-        className="mt-6 inline-block rounded-full bg-accent px-6 py-3 text-sm font-medium text-accent-ink"
+        className={`mt-6 inline-flex ${buttonVariants()}`}
       >
         Back to dashboard
       </Link>

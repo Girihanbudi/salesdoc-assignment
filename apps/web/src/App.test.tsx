@@ -1,5 +1,5 @@
 import type { Lead } from '@salesdoc/shared';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { App } from './App.js';
@@ -329,5 +329,56 @@ describe('page transitions', () => {
 
     // The page must still render; reduced motion means no movement, not no UI.
     expect(await screen.findByRole('heading', { name: 'Dashboard' })).toBeInTheDocument();
+  });
+});
+
+describe('mobile navigation', () => {
+  it('hides the menu behind a burger until it is opened', async () => {
+    const user = userEvent.setup();
+    renderAt('/dashboard');
+    await screen.findByRole('heading', { name: 'Dashboard' });
+
+    const burger = screen.getByRole('button', { name: /open menu/i });
+    expect(burger).toHaveAttribute('aria-expanded', 'false');
+
+    await user.click(burger);
+
+    expect(screen.getByRole('button', { name: /close menu/i })).toBeInTheDocument();
+    expect(screen.getByRole('dialog', { name: /menu/i })).toBeInTheDocument();
+  });
+
+  it('closes the menu after navigating, so the page is not left underneath it', async () => {
+    const user = userEvent.setup();
+    renderAt('/dashboard');
+    await screen.findByRole('heading', { name: 'Dashboard' });
+
+    await user.click(screen.getByRole('button', { name: /open menu/i }));
+    const menu = screen.getByRole('dialog', { name: /menu/i });
+    await user.click(within(menu).getByRole('link', { name: /Sessions/i }));
+
+    await waitFor(() => {
+      expect(screen.queryByRole('button', { name: /close menu/i })).not.toBeInTheDocument();
+    });
+  });
+});
+
+describe('breadcrumbs', () => {
+  it('gives a nested page a way back to its list', async () => {
+    renderAt('/sessions/session-abc');
+
+    const crumbs = await screen.findByRole('navigation', { name: /breadcrumb/i });
+    expect(within(crumbs).getByRole('link', { name: 'Sessions' })).toHaveAttribute(
+      'href',
+      '/sessions'
+    );
+    // The page you are on is not a link — that would be a dead control.
+    expect(within(crumbs).getByText('session-abc')).toHaveAttribute('aria-current', 'page');
+  });
+
+  it('leaves top-level pages without a trail', async () => {
+    renderAt('/sessions');
+
+    await screen.findByRole('heading', { name: 'Sessions' });
+    expect(screen.queryByRole('navigation', { name: /breadcrumb/i })).not.toBeInTheDocument();
   });
 });

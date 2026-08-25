@@ -1,6 +1,7 @@
 import type { CRMActivity } from '@salesdoc/shared';
 import { ChevronRight } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { buttonVariants } from '@/components/ui/button.js';
 import { Card } from '@/components/ui/card.js';
 import { dateTime } from '@/lib/format.js';
 import { PATHS } from '@/routes/paths.js';
@@ -19,9 +20,9 @@ export interface CrmActivitiesPageProps {
 export function CrmActivitiesPage({ activities }: CrmActivitiesPageProps) {
   if (activities.length === 0) {
     return (
-      <Card className="p-12 text-center">
+      <Card className="p-8 text-center sm:p-12">
         <p className="text-muted">Nothing written yet.</p>
-        <Link to={PATHS.dial} className="mt-2 inline-block text-sm font-medium underline">
+        <Link to={PATHS.dial} className={`mt-5 inline-flex ${buttonVariants({ size: 'sm' })}`}>
           Run a session
         </Link>
       </Card>
@@ -35,7 +36,7 @@ export function CrmActivitiesPage({ activities }: CrmActivitiesPageProps) {
           <li key={activity.id}>
             <Link
               to={PATHS.crmActivity(activity.callId)}
-              className="flex items-center justify-between gap-4 px-7 py-4 transition-colors hover:bg-bg"
+              className="flex items-center justify-between gap-4 px-5 py-4 sm:px-7 transition-colors hover:bg-bg"
             >
               <span className="min-w-0">
                 <span className="block truncate font-medium">{activity.disposition}</span>

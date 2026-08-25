@@ -123,3 +123,68 @@ describe('GET /api/me', () => {
     expect(agent.initials).toHaveLength(2);
   });
 });
+
+describe('one session per agent', () => {
+  it('refuses a second session while the first is still dialing', async () => {
+    // Two sessions means four lines dialing for one person, and both could
+    // elect a winner in the same moment — the collision the winner election
+    // exists to prevent.
+    const app = await buildTestApp();
+
+    const first = await app.inject({
+      method: 'POST',
+      url: '/api/sessions',
+      payload: { leadIds: ['lead-1', 'lead-2'] },
+    });
+    await app.inject({ method: 'POST', url: `/api/sessions/${first.json().data.id}/start` });
+
+    const second = await app.inject({
+      method: 'POST',
+      url: '/api/sessions',
+      payload: { leadIds: ['lead-3', 'lead-4'] },
+    });
+
+    expect(second.statusCode).toBe(409);
+    expect(second.json().error.code).toBe(ERR.AGENT.BUSY);
+    // Names the session in the way, so the agent knows what to go and stop.
+    expect(second.json().error.details[0].message).toContain(first.json().data.id);
+  });
+
+  it('allows a new session once the previous one has stopped', async () => {
+    const app = await buildTestApp();
+
+    const first = await app.inject({
+      method: 'POST',
+      url: '/api/sessions',
+      payload: { leadIds: ['lead-1'] },
+    });
+    const firstId = first.json().data.id;
+    await app.inject({ method: 'POST', url: `/api/sessions/${firstId}/start` });
+    await app.inject({ method: 'POST', url: `/api/sessions/${firstId}/stop` });
+
+    const second = await app.inject({
+      method: 'POST',
+      url: '/api/sessions',
+      payload: { leadIds: ['lead-2'] },
+    });
+
+    expect(second.statusCode).toBe(201);
+  });
+
+  it('does not count a session that was never started', async () => {
+    const app = await buildTestApp();
+    await app.inject({
+      method: 'POST',
+      url: '/api/sessions',
+      payload: { leadIds: ['lead-1'] },
+    });
+
+    const second = await app.inject({
+      method: 'POST',
+      url: '/api/sessions',
+      payload: { leadIds: ['lead-2'] },
+    });
+
+    expect(second.statusCode).toBe(201);
+  });
+});

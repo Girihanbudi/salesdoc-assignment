@@ -47,7 +47,7 @@ export function LeadPicker({
   return (
     <div className="flex flex-col gap-5">
       {resumableSessionId !== null && (
-        <Card className="flex flex-wrap items-center justify-between gap-4 border border-accent/40 p-5">
+        <Card className="flex flex-wrap items-center justify-between gap-4 border border-accent/40 p-4 sm:p-5">
           <div>
             <p className="font-medium">You have a session in progress</p>
             <p className="text-sm text-muted">
@@ -69,7 +69,7 @@ export function LeadPicker({
       )}
 
       <Card className="overflow-hidden">
-      <div className="flex items-center justify-between border-b border-line px-7 py-5">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line px-4 py-5 sm:px-7">
         <div>
           <h2 className="text-lg font-semibold">Leads</h2>
           <p className="text-sm text-muted">
@@ -88,16 +88,16 @@ export function LeadPicker({
       </div>
 
       {leads.length === 0 ? (
-        <p className="px-7 py-12 text-center text-muted">No leads available.</p>
+        <p className="px-4 py-12 text-center text-muted sm:px-7">No leads available.</p>
       ) : (
         <table className="w-full">
           <caption className="sr-only">Available leads</caption>
           <thead>
             <tr className="text-left text-xs font-medium tracking-wide text-muted uppercase">
-              <th scope="col" className="w-16 py-3 pl-7" />
+              <th scope="col" className="w-12 py-3 pl-4 sm:w-16 sm:pl-7" />
               <th scope="col" className="py-3">Name</th>
-              <th scope="col" className="py-3">Phone</th>
-              <th scope="col" className="py-3 pr-7 text-right">CRM</th>
+              <th scope="col" className="hidden py-3 sm:table-cell">Phone</th>
+              <th scope="col" className="py-3 pr-4 text-right sm:pr-7">CRM</th>
             </tr>
           </thead>
           <tbody>
@@ -111,7 +111,7 @@ export function LeadPicker({
                     checked && 'bg-accent/10'
                   )}
                 >
-                  <td className="py-4 pr-4 pl-7">
+                  <td className="py-4 pr-3 pl-4 sm:pr-4 sm:pl-7">
                     <input
                       type="checkbox"
                       id={`lead-${lead.id}`}
@@ -121,13 +121,18 @@ export function LeadPicker({
                     />
                   </td>
                   <td className="py-4">
-                    <label htmlFor={`lead-${lead.id}`} className="cursor-pointer">
+                    <label htmlFor={`lead-${lead.id}`} className="block cursor-pointer">
                       <span className="block font-medium">{lead.name}</span>
                       <span className="block text-sm text-muted">{lead.company}</span>
+                      {/* The phone column is dropped on a phone, so it moves
+                          under the name rather than disappearing. */}
+                      <span className="tnum block text-sm text-muted sm:hidden">
+                        {lead.phone}
+                      </span>
                     </label>
                   </td>
-                  <td className="tnum py-4 text-sm text-muted">{lead.phone}</td>
-                  <td className="py-4 pr-7 text-right">
+                  <td className="tnum hidden py-4 text-sm text-muted sm:table-cell">{lead.phone}</td>
+                  <td className="py-4 pr-4 text-right sm:pr-7">
                     {lead.crmExternalId ? (
                       <span className="rounded-full bg-ink/5 px-2.5 py-1 text-xs text-muted">
                         Linked
@@ -143,7 +148,7 @@ export function LeadPicker({
         </table>
       )}
 
-      <div className="flex items-center justify-between border-t border-line px-7 py-5">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line px-4 py-5 sm:px-7">
         <p className="text-sm text-muted" role="status">
           {selected.size} selected
         </p>

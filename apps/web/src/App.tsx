@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { BrowserRouter, useLocation } from 'react-router-dom';
+import { Breadcrumbs, type Crumb } from '@/components/Breadcrumbs.js';
 import { Shell } from '@/components/Shell.js';
 import { Snackbar } from '@/components/ui/snackbar.js';
 import { useActiveSession } from '@/hooks/useActiveSession.js';
@@ -7,12 +8,22 @@ import { ToastProvider, useToast } from '@/hooks/useToasts.js';
 import { AppRoutes } from '@/routes/AppRoutes.js';
 import { PATHS } from '@/routes/paths.js';
 
-/** Heading per route. Longest-prefix entries come first. */
-const HEADINGS: { match: (path: string) => boolean; title: string; subtitle: string }[] = [
+/** Heading and breadcrumb trail per route. Longest-prefix entries come first. */
+const HEADINGS: {
+  match: (path: string) => boolean;
+  title: string;
+  subtitle: string;
+  /** Omitted on top-level pages: the rail already says where you are. */
+  trail?: (path: string) => Crumb[];
+}[] = [
   {
     match: (p) => p.startsWith('/crm-activities/'),
     title: 'CRM activity',
     subtitle: 'One record, with the lead and the call behind it.',
+    trail: (p) => [
+      { label: 'CRM activity', to: PATHS.crmActivities },
+      { label: p.split('/').pop() ?? 'Record' },
+    ],
   },
   {
     match: (p) => p === PATHS.crmActivities,
@@ -23,6 +34,10 @@ const HEADINGS: { match: (path: string) => boolean; title: string; subtitle: str
     match: (p) => p.startsWith('/sessions/'),
     title: 'Session log',
     subtitle: 'Every call this session placed. Open one for its CRM record.',
+    trail: (p) => [
+      { label: 'Sessions', to: PATHS.sessions },
+      { label: p.split('/').pop() ?? 'Session' },
+    ],
   },
   {
     match: (p) => p === PATHS.sessions,
@@ -41,7 +56,11 @@ const HEADINGS: { match: (path: string) => boolean; title: string; subtitle: str
   },
 ];
 
-const FALLBACK_HEADING = { title: 'Not found', subtitle: 'That page does not exist.' };
+const FALLBACK_HEADING: (typeof HEADINGS)[number] = {
+  match: () => true,
+  title: 'Not found',
+  subtitle: 'That page does not exist.',
+};
 
 /**
  * Root component: router, page chrome, and the toast host.
@@ -76,10 +95,15 @@ function AppFrame() {
   }, [pathname]);
 
   const heading = HEADINGS.find((h) => h.match(pathname)) ?? FALLBACK_HEADING;
+  const trail = heading.trail?.(pathname) ?? null;
 
   return (
     <>
-      <Shell title={heading.title} subtitle={heading.subtitle}>
+      <Shell
+        title={heading.title}
+        subtitle={heading.subtitle}
+        breadcrumbs={trail === null ? undefined : <Breadcrumbs trail={trail} />}
+      >
         <AppRoutes
           activeSessionId={activeSession.sessionId}
           onSessionStarted={activeSession.remember}

@@ -32,8 +32,8 @@ export function SessionDetailPage({ detail }: SessionDetailPageProps) {
   ];
 
   return (
-    <div className="flex flex-col gap-5">
-      <Card className="p-7">
+    <div className="flex flex-col gap-4 sm:gap-5">
+      <Card className="p-5 sm:p-7">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <CardLabel>Session {session.id}</CardLabel>
           <span className="text-sm text-muted">Agent {session.agentId}</span>
@@ -49,7 +49,7 @@ export function SessionDetailPage({ detail }: SessionDetailPageProps) {
       </Card>
 
       <Card className="overflow-hidden">
-        <div className="border-b border-line px-7 py-5">
+        <div className="border-b border-line px-5 py-5 sm:px-7">
           <CardLabel>Calls</CardLabel>
           <p className="mt-1 text-sm text-muted">
             Newest first. Open one to see what was written to the CRM.
@@ -57,7 +57,7 @@ export function SessionDetailPage({ detail }: SessionDetailPageProps) {
         </div>
 
         {calls.length === 0 ? (
-          <p className="px-7 py-12 text-center text-sm text-muted">
+          <p className="px-5 py-12 sm:px-7 text-center text-sm text-muted">
             No calls placed in this session.
           </p>
         ) : (
@@ -89,12 +89,12 @@ export function SessionDetailPage({ detail }: SessionDetailPageProps) {
                   {activity ? (
                     <Link
                       to={PATHS.crmActivity(call.id)}
-                      className="flex items-center justify-between gap-4 px-7 py-4 transition-colors hover:bg-bg"
+                      className="flex items-center justify-between gap-4 px-5 py-4 sm:px-7 transition-colors hover:bg-bg"
                     >
                       {row}
                     </Link>
                   ) : (
-                    <div className="flex items-center justify-between gap-4 px-7 py-4">{row}</div>
+                    <div className="flex items-center justify-between gap-4 px-5 py-4 sm:px-7">{row}</div>
                   )}
                 </li>
               );

@@ -25,4 +25,8 @@ export const ERR = {
   ACTIVITY: {
     NOT_FOUND: 'ACTIVITY.NOT_FOUND',
   },
+
+  AGENT: {
+    BUSY: 'AGENT.BUSY',
+  },
 } as const;

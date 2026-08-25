@@ -38,11 +38,11 @@ export function Dashboard({ view, onStop, onReset }: DashboardProps) {
   const reduceMotion = useReducedMotion();
 
   return (
-    <div className="grid gap-5 lg:grid-cols-[1fr_352px]">
+    <div className="grid gap-4 sm:gap-5 lg:grid-cols-[1fr_352px]">
       <div className="flex flex-col gap-5">
         <SessionCard view={view} />
 
-        <div className="grid gap-5 sm:grid-cols-2">
+        <div className="grid gap-4 sm:grid-cols-2 sm:gap-5">
           {[0, 1].map((index) => (
             <LineCard
               key={index}
@@ -107,7 +107,7 @@ function SessionCard({ view }: { view: SessionView }) {
   ];
 
   return (
-    <Card className="p-7">
+    <Card className="p-5 sm:p-7">
       <div className="flex items-start justify-between">
         <div>
           <CardLabel>Attempts</CardLabel>
@@ -211,7 +211,7 @@ function AttemptTimeline({
   const longest = Math.max(...bars.map((b) => b.seconds), 1);
 
   return (
-    <Card className="p-7">
+    <Card className="p-5 sm:p-7">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <CardLabel>Call durations</CardLabel>

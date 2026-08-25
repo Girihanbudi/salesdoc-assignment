@@ -29,6 +29,19 @@ interface SessionParams {
 export const create =
   (ctx: AppContext) =>
   (request: { body: CreateSessionBody }, reply: FastifyReply): FastifyReply => {
+    // One agent cannot work two sessions at once. Four lines would be dialing
+    // for one person, and both sessions could elect a winner in the same
+    // moment — the exact collision the winner election exists to prevent.
+    const running = ctx.sessions.findRunningByAgent(request.body.agentId);
+    if (running) {
+      throw new AppError(
+        409,
+        ERR.AGENT.BUSY,
+        'That agent already has a session running',
+        [{ path: 'agentId', message: `Session ${running.id} is still dialing` }]
+      );
+    }
+
     const missing = ctx.leads.findMissingIds(request.body.leadIds);
     if (missing.length > 0) {
       throw new AppError(400, ERR.LEAD.UNKNOWN, `No such lead: ${missing.join(', ')}`);

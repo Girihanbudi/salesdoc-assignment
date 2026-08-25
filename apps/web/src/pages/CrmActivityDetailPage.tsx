@@ -18,8 +18,8 @@ export function CrmActivityDetailPage({ detail }: CrmActivityDetailPageProps) {
   const { activity, lead, call } = detail;
 
   return (
-    <div className="grid gap-5 lg:grid-cols-[1fr_320px]">
-      <Card className="p-7">
+    <div className="grid gap-4 sm:gap-5 lg:grid-cols-[1fr_320px]">
+      <Card className="p-5 sm:p-7">
         <CardLabel>Activity</CardLabel>
         <p className="mt-1 text-2xl font-bold tracking-tight">{activity.disposition}</p>
         <p className="mt-4 whitespace-pre-wrap text-muted">
@@ -34,7 +34,7 @@ export function CrmActivityDetailPage({ detail }: CrmActivityDetailPageProps) {
         </dl>
       </Card>
 
-      <div className="flex flex-col gap-5">
+      <div className="flex flex-col gap-4 sm:gap-5">
         <Card className="p-6">
           <CardLabel>Lead</CardLabel>
           <p className="mt-2 font-semibold">{lead.name}</p>

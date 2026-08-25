@@ -61,6 +61,10 @@ const MESSAGES: Record<string, UserMessage> = {
     title: 'That session no longer exists',
     detail: 'The server restarts clear in-memory state. Start a new session.',
   },
+  'AGENT.BUSY': {
+    title: 'You already have a session running',
+    detail: 'Finish or stop it before starting another.',
+  },
   'CALL.NOT_ACTIVE': {
     title: 'That call is no longer on the line',
     detail: 'It ended before the wrap-up was saved.',
