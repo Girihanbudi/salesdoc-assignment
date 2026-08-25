@@ -4,33 +4,40 @@ import type {
   EndCallBody,
   SessionView,
 } from '@salesdoc/shared';
+import type { FastifyReply } from 'fastify';
 import { ERR } from '../constant/error-codes.js';
 import type { AppContext } from '../types/context.js';
 import { AppError } from '../utils/AppError.js';
 import { withSession } from '../utils/with-entity.js';
 
+/** The `:id` every session route carries. */
+interface SessionParams {
+  params: { id: string };
+}
+
 /**
  * Creates a session over the selected leads.
  *
- * Shape validation already happened in the route schema, so the only check
- * left is the one that needs the database: do these leads exist?
+ * Shape validation already ran in the route schema, so the only check left is
+ * the one that needs the database: do these leads exist?
  *
  * @param ctx the app context
- * @returns a handler resolving to the new session
+ * @returns a handler replying 201 with the new session
  */
 export const create =
   (ctx: AppContext) =>
-  (request: { body: CreateSessionBody }): DialerSession => {
+  (request: { body: CreateSessionBody }, reply: FastifyReply): FastifyReply => {
     const missing = ctx.leads.findMissingIds(request.body.leadIds);
     if (missing.length > 0) {
       throw new AppError(400, ERR.LEAD.UNKNOWN, `No such lead: ${missing.join(', ')}`);
     }
 
-    return ctx.sessions.create(
+    const session = ctx.sessions.create(
       `session-${ctx.id()}`,
       request.body.agentId,
       request.body.leadIds
     );
+    return reply.code(201).send(session);
   };
 
 /**
@@ -40,7 +47,7 @@ export const create =
  * @returns a handler resolving to the updated session
  */
 export const start = (ctx: AppContext) =>
-  withSession<{ params: { id: string } }, DialerSession | undefined>(ctx, (session) => {
+  withSession<SessionParams, DialerSession | undefined>(ctx, (session) => {
     ctx.dialer.start(session.id);
     return ctx.sessions.findById(session.id);
   });
@@ -52,7 +59,7 @@ export const start = (ctx: AppContext) =>
  * @returns a handler resolving to the updated session
  */
 export const stop = (ctx: AppContext) =>
-  withSession<{ params: { id: string } }, DialerSession | undefined>(ctx, (session) => {
+  withSession<SessionParams, DialerSession | undefined>(ctx, (session) => {
     ctx.dialer.stop(session.id);
     return ctx.sessions.findById(session.id);
   });
@@ -64,9 +71,15 @@ export const stop = (ctx: AppContext) =>
  * @returns a handler resolving to the session view
  */
 export const view = (ctx: AppContext) =>
-  withSession<{ params: { id: string } }, SessionView>(ctx, (session) =>
+  withSession<SessionParams, SessionView>(ctx, (session) =>
     ctx.sessionView.build(session)
   );
+
+/** What the wrap-up route supplies. */
+interface EndCallRequest {
+  params: { id: string; callId: string };
+  body: EndCallBody;
+}
 
 /**
  * Wraps up the connected call so the agent's line frees.
@@ -75,18 +88,15 @@ export const view = (ctx: AppContext) =>
  * @returns a handler resolving to the updated session
  */
 export const endCall = (ctx: AppContext) =>
-  withSession<{ params: { id: string; callId: string }; body: EndCallBody }, DialerSession | undefined>(
-    ctx,
-    (session, request) => {
-      if (session.winnerCallId !== request.params.callId) {
-        throw new AppError(
-          409,
-          ERR.CALL.NOT_ACTIVE,
-          'That call is not the one currently holding the agent'
-        );
-      }
-
-      ctx.dialer.endCall(session.id, request.params.callId, request.body);
-      return ctx.sessions.findById(session.id);
+  withSession<EndCallRequest, DialerSession | undefined>(ctx, (session, request) => {
+    if (session.winnerCallId !== request.params.callId) {
+      throw new AppError(
+        409,
+        ERR.CALL.NOT_ACTIVE,
+        'That call is not the one currently holding the agent'
+      );
     }
-  );
+
+    ctx.dialer.endCall(session.id, request.params.callId, request.body);
+    return ctx.sessions.findById(session.id);
+  });

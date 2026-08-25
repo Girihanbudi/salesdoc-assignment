@@ -1,6 +1,8 @@
 import {
+  ApiFailureSchema,
   DialerSessionSchema,
   LeadSchema,
+  MetaSchema,
   SessionViewSchema,
   type Disposition,
   type DialerSession,
@@ -8,6 +10,35 @@ import {
   type SessionView,
 } from '@salesdoc/shared';
 import { z } from 'zod';
+
+/** Thrown for any non-2xx response, carrying the API's machine-readable code. */
+export class ApiError extends Error {
+  readonly code: string;
+  readonly details: { path: string; message: string }[] | undefined;
+
+  /**
+   * @param code the API's error code, e.g. `SESSION.NOT_FOUND`
+   * @param message human-readable explanation
+   * @param details per-field validation failures, when there were any
+   */
+  constructor(
+    code: string,
+    message: string,
+    details?: { path: string; message: string }[]
+  ) {
+    super(message);
+    this.name = 'ApiError';
+    this.code = code;
+    this.details = details;
+  }
+}
+
+/** The envelope's own shape. The payload inside is checked separately. */
+const SuccessEnvelopeSchema = z.object({
+  success: z.literal(true),
+  data: z.unknown(),
+  meta: MetaSchema,
+});
 
 /**
  * Calls the API and validates the response against a schema.
@@ -31,16 +62,24 @@ async function request<T>(
     ...(init?.body ? { headers: { 'content-type': 'application/json' } } : {}),
   });
 
+  const body: unknown = await res.json().catch(() => null);
+
   if (!res.ok) {
-    const body: unknown = await res.json().catch(() => null);
-    const message =
-      body && typeof body === 'object' && 'error' in body
-        ? String((body as { error: { message?: string } }).error.message)
-        : `Request failed (${res.status})`;
-    throw new Error(message);
+    const failure = ApiFailureSchema.safeParse(body);
+    throw failure.success
+      ? new ApiError(
+          failure.data.error.code,
+          failure.data.error.message,
+          failure.data.error.details
+        )
+      : new ApiError('UNKNOWN', `Request failed (${res.status})`);
   }
 
-  return schema.parse(await res.json());
+  // Checked in two layers because a generic payload schema does not survive
+  // zod's inference inside a wrapper: the envelope is validated structurally,
+  // then the payload against its own schema.
+  const enveloped = SuccessEnvelopeSchema.parse(body);
+  return schema.parse(enveloped.data);
 }
 
 /**

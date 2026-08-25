@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { ERR } from '../constant/error-codes.js';
+import { metaFor } from './envelope.js';
 
 /** Prefixes owned by the API. Anything else is a client-side route. */
 const API_PREFIXES = ['/api', '/mock-crm', '/leads', '/docs'];
@@ -18,7 +19,11 @@ export function registerNotFound(app: FastifyInstance): void {
     const isApi = API_PREFIXES.some((prefix) => request.url.startsWith(prefix));
 
     return isApi
-      ? reply.code(404).send({ error: { code: ERR.NOT_FOUND, message: 'No such route' } })
+      ? reply.code(404).send({
+          success: false,
+          error: { code: ERR.NOT_FOUND, message: 'No such route' },
+          meta: metaFor(request),
+        })
       : reply.code(200).type('text/html').sendFile('index.html');
   });
 }

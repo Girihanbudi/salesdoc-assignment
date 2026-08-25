@@ -29,7 +29,8 @@ const BLOCKED = [
   [/\brm\s+-[rRf]+\s.*(\s\/|~|\.\.)/, 'recursive delete outside the project'],
   [/\b(shutdown|reboot|mkfs|dd\s+if=)\b/, 'system-level destructive command'],
   [/\bnpm\s+publish\b|\bnpm\s+unpublish\b/, 'publishes to the public registry'],
-  [/>\s*\.env\b|\brm\b.*\.env\b/, 'never overwrite or delete .env'],
+  // .env.example is committed by design and holds no secrets.
+  [/>\s*\.env(?!\.example)\b|\brm\b.*\.env(?!\.example)\b/, 'never overwrite or delete .env'],
 ];
 
 let raw = '';

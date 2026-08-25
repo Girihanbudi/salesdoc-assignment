@@ -22,11 +22,25 @@ const LEADS: Lead[] = [
   },
 ];
 
-beforeEach(() => {
-  vi.stubGlobal(
-    'fetch',
-    vi.fn(() => Promise.resolve(new Response(JSON.stringify(LEADS))))
+/**
+ * Wraps a payload the way the API does, so the client's unwrapping is exercised
+ * rather than bypassed.
+ *
+ * @param data the payload to envelope
+ * @returns a fetch Response carrying the success envelope
+ */
+function enveloped(data: unknown): Response {
+  return new Response(
+    JSON.stringify({
+      success: true,
+      data,
+      meta: { requestId: 'req-test', timestamp: new Date().toISOString() },
+    })
   );
+}
+
+beforeEach(() => {
+  vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(enveloped(LEADS))));
 });
 
 afterEach(() => {

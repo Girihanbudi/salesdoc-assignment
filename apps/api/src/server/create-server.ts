@@ -47,7 +47,7 @@ export async function createServer(
   if (options.docs === true) await registerSwagger(app);
 
   registerErrorHandler(app);
-  registerRoutes(app, ctx);
+  await registerRoutes(app, ctx);
 
   if (env.WEB_ROOT !== undefined) registerNotFound(app);
 

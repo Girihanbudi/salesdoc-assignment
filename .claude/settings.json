@@ -42,7 +42,16 @@
       "Bash(docker compose:*)"
     ],
     "ask": ["Bash(curl:*)", "Bash(wget:*)"],
-    "deny": ["Read(./.env)", "Read(./.env.*)", "Read(./**/*.pem)", "Read(./**/*.key)"]
+    "deny": [
+      "Read(./.env)",
+      "Read(./.env.local)",
+      "Read(./.env.development)",
+      "Read(./.env.production)",
+      "Read(./.env.test)",
+      "Read(./.env.*.local)",
+      "Read(./**/*.pem)",
+      "Read(./**/*.key)"
+    ]
   },
   "hooks": {
     "PreToolUse": [

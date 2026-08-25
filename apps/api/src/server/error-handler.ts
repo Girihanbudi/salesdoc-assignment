@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { ZodError } from 'zod';
 import { ERR } from '../constant/error-codes.js';
 import { AppError, type ErrorDetail } from '../utils/AppError.js';
+import { metaFor } from './envelope.js';
 
 /** Fastify's own validation shape, used when a route schema rejects a body. */
 interface FastifyValidationIssue {
@@ -64,14 +65,18 @@ export function registerErrorHandler(app: FastifyInstance): void {
   app.setErrorHandler((error, request, reply) => {
     if (error instanceof AppError) {
       return reply.code(error.status).send({
+        success: false,
         error: { code: error.code, message: error.message, details: error.details },
+        meta: metaFor(request),
       });
     }
 
     const details = toValidationDetails(error);
     if (details) {
       return reply.code(400).send({
+        success: false,
         error: { code: ERR.VALIDATION_FAILED, message: 'Request validation failed', details },
+        meta: metaFor(request),
       });
     }
 
@@ -79,13 +84,17 @@ export function registerErrorHandler(app: FastifyInstance): void {
     if (status >= 500) {
       request.log.error({ err: error }, 'unhandled error');
       return reply.code(500).send({
+        success: false,
         error: { code: ERR.INTERNAL, message: 'Internal server error' },
+        meta: metaFor(request),
       });
     }
 
     const message = error instanceof Error ? error.message : 'Request failed';
     return reply.code(status).send({
+      success: false,
       error: { code: ERR.VALIDATION_FAILED, message },
+      meta: metaFor(request),
     });
   });
 }
