@@ -6,10 +6,10 @@ services:
     plan: free
     region: singapore
     healthCheckPath: /api/health
-    # CI owns deploys (see .github/workflows/check.yml on the ci branch) so only
-    # a green commit ships. Leaving this on would deploy every push in parallel
-    # with CI and make the gate decorative.
-    autoDeploy: false
+    # On until CI exists. Once the workflow on the ci branch lands, turn this
+    # off and let it fire the deploy hook instead — otherwise Render deploys
+    # every push in parallel with the gate, and the gate decides nothing.
+    autoDeploy: true
     envVars:
       - key: NODE_ENV
         value: production
