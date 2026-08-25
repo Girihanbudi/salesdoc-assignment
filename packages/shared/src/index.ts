@@ -13,6 +13,7 @@
  */
 
 // Domain
+export * from './models/agent.js';
 export * from './models/call-status.js';
 export * from './models/call.js';
 export * from './models/crm-activity.js';

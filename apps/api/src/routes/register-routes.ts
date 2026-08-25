@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { envelope } from '../server/envelope.js';
 import type { AppContext } from '../types/context.js';
 import { activityRoutes } from './activities.routes.js';
+import { agentRoutes } from './agent.routes.js';
 import { healthRoutes } from './health.routes.js';
 import { leadRoutes } from './leads.routes.js';
 import { mockCrmRoutes } from './mock-crm.routes.js';
@@ -29,6 +30,7 @@ export async function registerRoutes(app: FastifyInstance, ctx: AppContext): Pro
   await app.register(async (api) => {
     api.addHook('preSerialization', envelope);
     healthRoutes(api);
+    agentRoutes(api, ctx);
     leadRoutes(api, ctx);
     sessionRoutes(api, ctx);
     activityRoutes(api, ctx);

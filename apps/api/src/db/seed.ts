@@ -1,4 +1,17 @@
-import type { Lead } from '@salesdoc/shared';
+import type { Agent, Lead } from '@salesdoc/shared';
+
+/**
+ * The single seeded agent.
+ *
+ * The brief has no auth and no user model, so the app runs as one known
+ * person rather than pretending to have accounts.
+ */
+export const SEED_AGENT: Agent = {
+  id: 'agent-1',
+  name: 'Dana Whitfield',
+  email: 'dana.whitfield@salesdoc.example',
+  initials: 'DW',
+};
 
 /**
  * Six leads, as the brief allows 4-8.

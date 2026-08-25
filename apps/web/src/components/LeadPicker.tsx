@@ -94,7 +94,7 @@ export function LeadPicker({
           <caption className="sr-only">Available leads</caption>
           <thead>
             <tr className="text-left text-xs font-medium tracking-wide text-muted uppercase">
-              <th scope="col" className="w-12 py-3 pl-7" />
+              <th scope="col" className="w-16 py-3 pl-7" />
               <th scope="col" className="py-3">Name</th>
               <th scope="col" className="py-3">Phone</th>
               <th scope="col" className="py-3 pr-7 text-right">CRM</th>
@@ -111,13 +111,13 @@ export function LeadPicker({
                     checked && 'bg-accent/10'
                   )}
                 >
-                  <td className="py-4 pl-7">
+                  <td className="py-4 pr-4 pl-7">
                     <input
                       type="checkbox"
                       id={`lead-${lead.id}`}
                       checked={checked}
                       onChange={() => toggle(lead.id)}
-                      className="size-4 accent-ink"
+                      className="size-4 cursor-pointer accent-ink"
                     />
                   </td>
                   <td className="py-4">

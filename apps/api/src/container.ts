@@ -5,6 +5,7 @@ import { createSessionViewController } from './controllers/session-view.controll
 import { createStore, type Store } from './db/store.js';
 import { createMockCrmClient } from './mocks/mock-crm.client.js';
 import { createActivitiesRepository } from './repositories/activities.repository.js';
+import { createAgentsRepository } from './repositories/agents.repository.js';
 import { createCallsRepository } from './repositories/calls.repository.js';
 import { createCrmRepository } from './repositories/crm.repository.js';
 import { createLeadsRepository } from './repositories/leads.repository.js';
@@ -49,6 +50,7 @@ export function createContainer(env: Env, options: ContainerOptions = {}): AppCo
   const clock = guarded(options.clock ?? createClock(), logger);
   const crmClock = guarded(options.crmClock ?? options.clock ?? createClock(), logger);
 
+  const agents = createAgentsRepository(store);
   const leads = createLeadsRepository(store);
   const calls = createCallsRepository(store);
   const sessions = createSessionsRepository(store);
@@ -78,5 +80,5 @@ export function createContainer(env: Env, options: ContainerOptions = {}): AppCo
 
   const sessionView = createSessionViewController({ leads, calls, activities, crm });
 
-  return { leads, calls, sessions, activities, crm, dialer, crmSync, sessionView, id: clock.id };
+  return { agents, leads, calls, sessions, activities, crm, dialer, crmSync, sessionView, id: clock.id };
 }

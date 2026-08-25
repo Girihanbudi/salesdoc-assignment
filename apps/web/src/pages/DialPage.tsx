@@ -1,5 +1,5 @@
 import type { Disposition } from '@salesdoc/shared';
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import * as api from '@/api.js';
 import { AsyncView } from '@/components/AsyncView.js';
@@ -46,6 +46,40 @@ export function DialPage({
     sessionId !== null
   );
 
+  // The dialer stops on its own once the queue drains, and nothing on screen
+  // announces it — the agent is usually looking elsewhere by then. Fire once on
+  // the RUNNING -> STOPPED edge rather than on every poll that sees STOPPED.
+  const wasRunning = useRef(false);
+  const view = session.data;
+
+  useEffect(() => {
+    if (!view) return;
+    const running = view.session.status === 'RUNNING';
+
+    if (wasRunning.current && !running) {
+      const { attempted, connected } = view.session.metrics;
+      toasts.push(
+        'info',
+        'Session finished',
+        `${String(attempted)} attempted · ${String(connected)} connected. The queue is empty.`
+      );
+    }
+    wasRunning.current = running;
+  }, [view, toasts]);
+
+  // A failed CRM write is the only silent failure in the flow: the call still
+  // shows its outcome, and nothing else says the record never landed.
+  const failedSyncCount = view?.history.filter((l) => l.crmSyncStatus === 'failed').length ?? 0;
+
+  useEffect(() => {
+    if (failedSyncCount === 0) return;
+    toasts.push(
+      'warning',
+      `${String(failedSyncCount)} call${failedSyncCount === 1 ? '' : 's'} did not reach the CRM`,
+      'The call outcome is recorded, but no activity was written.'
+    );
+  }, [failedSyncCount, toasts]);
+
   const report = (cause: unknown, fallback: string): void => {
     const { title, detail } = toUserMessage(cause, fallback);
     toasts.push('error', title, detail);
@@ -89,7 +123,7 @@ export function DialPage({
     try {
       await api.stopSession(sessionId);
       session.refresh();
-      toasts.push('info', 'Session stopped', 'Active calls were cancelled.');
+      toasts.push('warning', 'Session stopped', 'Any calls still ringing were cancelled.');
     } catch (cause) {
       report(cause, 'Could not stop the session');
     } finally {

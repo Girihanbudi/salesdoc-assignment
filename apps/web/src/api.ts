@@ -1,5 +1,6 @@
 import {
   ActivityDetailSchema,
+  AgentSchema,
   CRMActivitySchema,
   CRMContactSchema,
   DialerSessionSchema,
@@ -7,6 +8,7 @@ import {
   SessionDetailSchema,
   SessionViewSchema,
   type ActivityDetail,
+  type Agent,
   type CRMActivity,
   type CRMContact,
   type DialerSession,
@@ -153,4 +155,13 @@ export function getActivities(): Promise<CRMActivity[]> {
  */
 export function getActivityDetail(callId: string): Promise<ActivityDetail> {
   return request(ActivityDetailSchema, `/api/activities/${callId}`);
+}
+
+/**
+ * Reads the agent the app is running as.
+ *
+ * @returns the current agent
+ */
+export function getAgent(): Promise<Agent> {
+  return request(AgentSchema, '/api/me');
 }

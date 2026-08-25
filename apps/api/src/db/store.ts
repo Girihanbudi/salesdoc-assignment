@@ -1,4 +1,5 @@
 import type {
+  Agent,
   Call,
   CRMActivity,
   CRMContact,
@@ -6,7 +7,7 @@ import type {
   DialerSession,
   Lead,
 } from '@salesdoc/shared';
-import { SEED_LEADS } from './seed.js';
+import { SEED_AGENT, SEED_LEADS } from './seed.js';
 
 /**
  * The database. It happens to be in memory, which the assignment permits, and
@@ -18,6 +19,8 @@ import { SEED_LEADS } from './seed.js';
  * day pointed at Postgres.
  */
 export interface Store {
+  /** The one signed-in agent. No auth, so no map. */
+  agent: Agent;
   leads: Map<string, Lead>;
   calls: Map<string, Call>;
   sessions: Map<string, DialerSession>;
@@ -42,6 +45,7 @@ export interface Store {
  */
 export function createStore(): Store {
   return {
+    agent: { ...SEED_AGENT },
     leads: new Map(SEED_LEADS.map((lead) => [lead.id, { ...lead }])),
     calls: new Map(),
     sessions: new Map(),

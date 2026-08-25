@@ -16,6 +16,12 @@
   --color-pos: #2fbf4e;
   --color-neg: #ff4438;
 
+  /* Toast surfaces. Deep enough that white text clears WCAG AA at body size,
+     so severity is legible rather than merely decorative. */
+  --color-toast-error: #7f1d1d;
+  --color-toast-warning: #854d0e;
+  --color-toast-success: #14532d;
+
   --radius-card: 24px;
   --radius-tile: 16px;
 

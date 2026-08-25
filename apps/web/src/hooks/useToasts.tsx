@@ -9,7 +9,7 @@ import {
 } from 'react';
 
 /** Severity, which drives both the colour and the icon. */
-export type ToastTone = 'error' | 'success' | 'info';
+export type ToastTone = 'error' | 'warning' | 'success' | 'info';
 
 /** One message queued for display. */
 export interface Toast {
@@ -21,9 +21,15 @@ export interface Toast {
   detail?: string;
 }
 
-/** How long a toast stays before dismissing itself. Errors linger. */
+/**
+ * How long a toast stays before dismissing itself.
+ *
+ * Scaled by how much the reader loses by missing it: a failure needs reading,
+ * a confirmation does not.
+ */
 const DISMISS_MS: Record<ToastTone, number> = {
   error: 8000,
+  warning: 7000,
   success: 4000,
   info: 5000,
 };

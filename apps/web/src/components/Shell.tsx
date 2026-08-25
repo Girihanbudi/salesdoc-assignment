@@ -1,6 +1,8 @@
 import { Activity, LayoutGrid, ListOrdered, PhoneCall, Settings } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { NavLink } from 'react-router-dom';
+import * as api from '@/api.js';
+import { usePoll } from '@/hooks/usePoll.js';
 import { cn } from '@/lib/utils.js';
 import { PATHS } from '@/routes/paths.js';
 
@@ -104,15 +106,34 @@ function TopBar() {
         ))}
       </nav>
 
-      <div className="flex items-center gap-3">
-        <span className="hidden text-sm text-muted sm:inline">agent-1</span>
-        <span
-          aria-hidden
-          className="grid size-9 place-items-center rounded-full bg-ink text-sm font-medium text-white"
-        >
-          A
-        </span>
-      </div>
+      <AgentBadge />
+    </div>
+  );
+}
+
+/**
+ * Who the app is running as.
+ *
+ * Fetched once rather than polled — the agent does not change while you look
+ * at it. Renders nothing until it arrives, so the bar does not flash a
+ * placeholder name.
+ *
+ * @returns the agent chip
+ */
+function AgentBadge() {
+  const agent = usePoll(api.getAgent, 0);
+
+  if (agent.data === null) return <span className="size-9" aria-hidden />;
+
+  return (
+    <div className="flex items-center gap-3">
+      <span className="hidden text-sm text-muted sm:inline">{agent.data.name}</span>
+      <span
+        title={agent.data.email}
+        className="grid size-9 shrink-0 place-items-center rounded-full bg-ink text-sm font-medium text-white"
+      >
+        {agent.data.initials}
+      </span>
     </div>
   );
 }

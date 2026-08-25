@@ -111,3 +111,15 @@ describe('POST /api/sessions/:id/calls/:callId/end', () => {
     expect(res.json().error.code).toBe(ERR.VALIDATION_FAILED);
   });
 });
+
+describe('GET /api/me', () => {
+  it('identifies the agent by name, not by id', async () => {
+    // "agent-1" is an id; it is the wrong thing to greet someone with.
+    const app = await buildTestApp();
+    const agent = (await app.inject({ url: '/api/me' })).json().data;
+
+    expect(agent.id).toBe('agent-1');
+    expect(agent.name).toEqual(expect.stringMatching(/\S+\s\S+/));
+    expect(agent.initials).toHaveLength(2);
+  });
+});
