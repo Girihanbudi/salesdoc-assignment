@@ -2,13 +2,9 @@ import {
   CONCURRENCY,
   type Call,
   type DialerSession,
-  type Disposition,
   type TerminalCallStatus,
 } from '@salesdoc/shared';
-import {
-  STOPPED_MID_CALL_DISPOSITION,
-  STOPPED_MID_CALL_NOTES,
-} from '../constant/crm.js';
+import { STOPPED_MID_CALL_NOTES } from '../constant/crm.js';
 import { OUTCOME_WEIGHTS } from '../constant/dialer.js';
 import type { CallsRepository } from '../repositories/calls.repository.js';
 import type { SessionsRepository } from '../repositories/sessions.repository.js';
@@ -21,6 +17,12 @@ export interface RingWindow {
   maxMs: number;
 }
 
+/** How long a mocked conversation lasts once the lead answers. */
+export interface TalkWindow {
+  minMs: number;
+  maxMs: number;
+}
+
 /** What {@link createDialer} needs to do its job. */
 export interface DialerDeps {
   sessions: SessionsRepository;
@@ -28,6 +30,7 @@ export interface DialerDeps {
   crmSync: CrmSyncController;
   clock: Clock;
   ring: RingWindow;
+  talk: TalkWindow;
 }
 
 /** Drives every dialer session's lifecycle. */
@@ -36,12 +39,8 @@ export interface Dialer {
   start: (sessionId: string) => void;
   /** Cancels every active call and halts the session. */
   stop: (sessionId: string) => void;
-  /** Wraps up the connected call so its line can be reused. */
-  endCall: (
-    sessionId: string,
-    callId: string,
-    outcome: { disposition: Disposition; notes: string }
-  ) => void;
+  /** Hangs up the connected call early, instead of letting it run out. */
+  endCall: (sessionId: string, callId: string) => void;
 }
 
 /**
@@ -51,7 +50,7 @@ export interface Dialer {
  * `clock`, which is what lets the tests assert "line 1 connects, line 2 is
  * cancelled" exactly, with no sleeping.
  *
- * @param deps repositories, the clock, CRM sync, and the ring window
+ * @param deps repositories, the clock, CRM sync, and the timing windows
  * @returns the engine's public operations
  */
 export function createDialer(deps: DialerDeps): Dialer {
@@ -74,13 +73,11 @@ export function createDialer(deps: DialerDeps): Dialer {
   }
 
   /**
-   * Applies a terminal status to a call, updates metrics, and frees its line.
+   * Ends a call that never reached a conversation, and frees its line.
    *
-   * CRM sync happens here for every outcome *except* CONNECTED. A connected
-   * call is not finished from the CRM's point of view until the agent has hung
-   * up and chosen a disposition, so its sync is deferred to {@link Dialer.endCall}.
-   * Syncing on connect would burn the callId idempotency key against a
-   * placeholder and silently discard the agent's real disposition.
+   * Only for outcomes that finish the instant they are decided. A CONNECTED
+   * call does not come through here — somebody is talking, so it keeps its
+   * line until {@link endConversation}.
    *
    * @param session the owning session
    * @param call the call to terminate
@@ -104,7 +101,43 @@ export function createDialer(deps: DialerDeps): Dialer {
     else if (status === 'CANCELED_BY_DIALER') session.metrics.canceled += 1;
     else session.metrics.failed += 1;
 
-    if (status !== 'CONNECTED') deps.crmSync.sync(call);
+    deps.crmSync.sync(call);
+  }
+
+  /**
+   * Ends the conversation on the winning call.
+   *
+   * A connected call is the one outcome that does not finish the moment it is
+   * decided — somebody is talking. It holds its line until the mocked
+   * conversation runs out, and only then does it end, sync, and free the agent.
+   * Stamping `endedAt` at the moment of answer would record every conversation
+   * as zero seconds long.
+   *
+   * @param sessionId the session holding the call
+   * @param callId the connected call
+   * @param notesOverride replaces the derived note when the call was cut short
+   */
+  function endConversation(
+    sessionId: string,
+    callId: string,
+    notesOverride?: string
+  ): void {
+    const session = deps.sessions.findById(sessionId);
+    const call = deps.calls.findById(callId);
+    if (!session || !call || call.endedAt !== null) return;
+
+    pending.get(call.id)?.();
+    pending.delete(call.id);
+
+    call.endedAt = deps.clock.now();
+    deps.calls.save(call);
+
+    session.activeCallIds = session.activeCallIds.filter((id) => id !== call.id);
+    if (session.winnerCallId === call.id) session.winnerCallId = null;
+    deps.sessions.save(session);
+
+    deps.crmSync.sync(call, notesOverride);
+    fillLines(sessionId);
   }
 
   /**
@@ -124,14 +157,29 @@ export function createDialer(deps: DialerDeps): Dialer {
       // First connect claims the agent. Every other live line is dropped —
       // these are the "abandoned calls" a parallel dialer trades away.
       session.winnerCallId = call.id;
-      terminate(session, call, 'CONNECTED');
 
+      call.status = 'CONNECTED';
+      deps.calls.save(call);
+      session.metrics.connected += 1;
+
+      // Deliberately NOT terminate(): the call keeps its line and stays
+      // unended while the conversation runs, so the UI can show which line is
+      // live and the recorded duration is talk time rather than ring time.
       for (const otherId of [...session.activeCallIds]) {
         const other = deps.calls.findById(otherId);
         if (other && other.status === 'DIALING') {
           terminate(session, other, 'CANCELED_BY_DIALER');
         }
       }
+
+      const talkMs =
+        deps.talk.minMs + deps.clock.random() * (deps.talk.maxMs - deps.talk.minMs);
+      pending.set(
+        call.id,
+        deps.clock.schedule(() => {
+          endConversation(sessionId, call.id);
+        }, talkMs)
+      );
     } else {
       terminate(session, call, status);
     }
@@ -206,6 +254,13 @@ export function createDialer(deps: DialerDeps): Dialer {
       const session = deps.sessions.findById(sessionId);
       if (!session) return;
 
+      // Marked STOPPED first, because ending the conversation below runs
+      // fillLines() — and a session being stopped must not dial two more leads
+      // on its way out. fillLines() returns immediately once status is not
+      // RUNNING.
+      session.status = 'STOPPED';
+      deps.sessions.save(session);
+
       // Copy: terminate() splices activeCallIds as it goes.
       for (const callId of [...session.activeCallIds]) {
         const call = deps.calls.findById(callId);
@@ -214,36 +269,24 @@ export function createDialer(deps: DialerDeps): Dialer {
         }
       }
 
-      // A connected call still holding the agent never reached endCall, so its
-      // CRM sync is still owed. Record it rather than losing the conversation.
+      // A conversation still running is cut short rather than left unrecorded:
+      // the call happened, so the CRM should say so.
       const winnerId = session.winnerCallId;
       if (winnerId !== null) {
-        const winner = deps.calls.findById(winnerId);
-        if (winner) {
-          deps.crmSync.sync(winner, {
-            disposition: STOPPED_MID_CALL_DISPOSITION,
-            notes: STOPPED_MID_CALL_NOTES,
-          });
-        }
+        endConversation(sessionId, winnerId, STOPPED_MID_CALL_NOTES);
       }
 
-      session.winnerCallId = null;
-      session.status = 'STOPPED';
-      deps.sessions.save(session);
+      const stopped = deps.sessions.findById(sessionId);
+      if (!stopped) return;
+      stopped.winnerCallId = null;
+      deps.sessions.save(stopped);
     },
 
-    endCall(sessionId, callId, outcome) {
-      const session = deps.sessions.findById(sessionId);
-      const call = deps.calls.findById(callId);
-      if (!session || !call || session.winnerCallId !== callId) return;
-
-      // The call already reached CONNECTED when it was answered. Its CRM sync
-      // was deliberately deferred to here, where the agent's disposition exists.
-      deps.crmSync.sync(call, outcome);
-      session.winnerCallId = null;
-      deps.sessions.save(session);
-
-      fillLines(sessionId);
+    endCall(sessionId, callId) {
+      // Hanging up early. The mocked conversation would have ended on its own;
+      // this just brings that forward, and the CRM write is identical either
+      // way because the disposition is derived from the call, not chosen.
+      endConversation(sessionId, callId);
     },
   };
 }

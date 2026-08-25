@@ -42,7 +42,7 @@ popover.
 **Light theme only.** The reference design has no dark variant, so building one
 would be inventing a design rather than implementing one.
 
-### Two deliberate deviations from the brief
+### Three deliberate deviations from the brief
 
 1. **`CallStatus` has a sixth value, `DIALING`.** The brief lists five, all
    terminal, but a call needs a status between placement and outcome. The five
@@ -54,15 +54,31 @@ would be inventing a design rather than implementing one.
    would only ever render `synced` and the requirement would be met in name
    only. The latency makes `pending → synced` observable and models the real
    network hop.
+3. **A connected call holds its line for a mocked conversation** (5–12s) before
+   ending. The brief lists `CONNECTED` as terminal, and it is — but a call that
+   has been *answered* is not over, and stamping `endedAt` at the moment of
+   answer records every conversation as zero seconds long. The activity is
+   still written automatically the instant the call ends, exactly as Part 2
+   describes; nothing waits on a human.
 
 ### One non-obvious design decision
 
-**A connected call syncs to the CRM at wrap-up, not on answer.** Syncing on
-answer would claim the `callId` idempotency key against a placeholder
-disposition, so the agent's real disposition would be silently discarded when
-they hung up. `terminate()` therefore skips the sync for `CONNECTED` only, and
-`endCall()` owns it. `stop()` covers the gap: a session stopped mid-conversation
-still records the call, with a `CALLBACK` disposition, rather than losing it.
+**A connected call is answered, not finished.** Every other outcome is over the
+instant it is decided, so `terminate()` ends it and syncs. A connected call
+keeps its line and stays unended while the mocked conversation runs, and only
+then ends, syncs, and frees the queue.
+
+Two things fall out of that, both of which were wrong before:
+
+- The recorded duration is **talk time**. Stamping `endedAt` at the moment of
+  answer recorded every conversation as zero seconds and made the durations
+  chart plot ring time.
+- "Show 2 active lines" stays true while somebody is talking. Removing the
+  winner from `activeCallIds` made both line cards read "Idle" during a live
+  call.
+
+`stop()` cuts a running conversation short rather than losing it: the call
+still files as `CONNECTED`, with a note saying it was cut short.
 
 ## What I'd do next
 
@@ -76,6 +92,14 @@ still records the call, with a `CALLBACK` disposition, rather than losing it.
 5. Auth and per-agent sessions.
 6. Retry with backoff on CRM sync. The `failed` state exists and is rendered,
    but nothing currently retries it.
+7. **An agent wrap-up screen.** The brief writes disposition and notes
+   automatically from the call outcome, so that is what this does — every
+   connected call is filed as `CONNECTED` with a generated note. A real dialer
+   would stop the conversation on a form where the agent picks
+   `INTERESTED` / `NOT_INTERESTED` / `CALLBACK` and types what was agreed.
+   Those values are already in the `Disposition` enum for that reason. I built
+   this at one point and removed it: it is not in the brief, and a third
+   deviation on graded work is not worth a feature nobody asked for.
 
 ## How I used AI tools, and what I verified
 

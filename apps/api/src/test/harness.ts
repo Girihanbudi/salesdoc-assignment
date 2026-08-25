@@ -49,14 +49,17 @@ export const ROLL = {
   busy: 0.9,
   /** Any value works for a ring duration; this one reads as "don't care". */
   ring: 0.5,
+  /** Same, for the length of a mocked conversation. */
+  talk: 0.5,
 } as const;
 
 /**
  * Builds the app wired to fake time, ids, and randomness.
  *
- * `randoms` is consumed in call order: one value per dial (ring duration), then
- * one per resolved call (outcome). Running out throws rather than silently
- * repeating, so a miscounted test fails loudly.
+ * `randoms` is consumed in call order: one per dial (ring duration), one per
+ * resolved call (outcome), and one more per connect (how long the conversation
+ * lasts). Running out throws rather than silently repeating, so a miscounted
+ * test fails loudly.
  *
  * @param leadIds leads to queue on the session
  * @param randoms the sequence `random()` returns

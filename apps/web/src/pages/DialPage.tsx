@@ -1,4 +1,3 @@
-import type { Disposition } from '@salesdoc/shared';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import * as api from '@/api.js';
@@ -100,23 +99,6 @@ export function DialPage({
     }
   };
 
-  const endCall = async (
-    callId: string,
-    outcome: { disposition: Disposition; notes: string }
-  ): Promise<void> => {
-    if (sessionId === null) return;
-    setBusy(true);
-    try {
-      await api.endCall(sessionId, callId, outcome);
-      session.refresh();
-      toasts.push('success', 'Call wrapped up', 'Written to the CRM.');
-    } catch (cause) {
-      report(cause, 'Could not end the call');
-    } finally {
-      setBusy(false);
-    }
-  };
-
   const stop = async (): Promise<void> => {
     if (sessionId === null) return;
     setBusy(true);
@@ -155,7 +137,6 @@ export function DialPage({
       {(data) => (
         <Dashboard
           view={data}
-          onEndCall={endCall}
           onStop={stop}
           onReset={() => {
             onSessionForgotten();

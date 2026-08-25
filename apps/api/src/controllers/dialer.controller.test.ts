@@ -7,7 +7,10 @@ const SIX_LEADS = ['lead-1', 'lead-2', 'lead-3', 'lead-4', 'lead-5', 'lead-6'];
 describe('winner election', () => {
   it('gives the agent the first call to connect and cancels the other line', () => {
     // 2 rings, then line 1 connects.
-    const h = createHarness(['lead-1', 'lead-2'], [ROLL.ring, ROLL.ring, ROLL.connected]);
+    const h = createHarness(
+      ['lead-1', 'lead-2'],
+      [ROLL.ring, ROLL.ring, ROLL.connected, ROLL.talk]
+    );
     h.ctx.dialer.start(h.sessionId);
 
     const [firstId, secondId] = h.store.sessions.get(h.sessionId)!.activeCallIds;
@@ -18,33 +21,61 @@ describe('winner election', () => {
     expect(h.store.sessions.get(h.sessionId)?.winnerCallId).toBe(firstId);
   });
 
-  it('does not dial while a winner holds the agent', () => {
-    const h = createHarness(SIX_LEADS, [ROLL.ring, ROLL.ring, ROLL.connected]);
+  it('keeps the connected call on its line while the conversation runs', () => {
+    // The brief says "show 2 active lines". Dropping the winner from
+    // activeCallIds made both line cards read "Idle" during a live call.
+    const h = createHarness(
+      ['lead-1', 'lead-2'],
+      [ROLL.ring, ROLL.ring, ROLL.connected, ROLL.talk]
+    );
     h.ctx.dialer.start(h.sessionId);
     h.tick();
 
     const session = h.store.sessions.get(h.sessionId)!;
-    expect(session.activeCallIds).toHaveLength(0);
-    // Four leads never dialed; the loser went back to nobody.
-    expect(session.leadQueue).toEqual(['lead-3', 'lead-4', 'lead-5', 'lead-6']);
+    expect(session.activeCallIds).toContain(session.winnerCallId);
   });
 
-  it('resumes dialing once the agent wraps up', () => {
-    const h = createHarness(SIX_LEADS, [
-      ROLL.ring,
-      ROLL.ring,
-      ROLL.connected,
-      ROLL.ring, // the two lines refilled after wrap-up
-      ROLL.ring,
-    ]);
+  it('records talk time, not ring time', () => {
+    const h = createHarness(
+      ['lead-1', 'lead-2'],
+      [ROLL.ring, ROLL.ring, ROLL.connected, ROLL.talk]
+    );
     h.ctx.dialer.start(h.sessionId);
     h.tick();
 
     const winnerId = h.store.sessions.get(h.sessionId)!.winnerCallId!;
-    h.ctx.dialer.endCall(h.sessionId, winnerId, {
-      disposition: 'INTERESTED',
-      notes: 'Wants a demo next week.',
-    });
+    // Still talking: an unfinished call has no end.
+    expect(h.store.calls.get(winnerId)?.endedAt).toBeNull();
+
+    h.tick(); // the conversation runs out
+    expect(h.store.calls.get(winnerId)?.endedAt).not.toBeNull();
+  });
+
+  it('does not dial while a winner holds the agent', () => {
+    const h = createHarness(SIX_LEADS, [ROLL.ring, ROLL.ring, ROLL.connected, ROLL.talk]);
+    h.ctx.dialer.start(h.sessionId);
+    h.tick();
+
+    const session = h.store.sessions.get(h.sessionId)!;
+    // Only the winner is live; the cancelled line is not refilled.
+    expect(session.activeCallIds).toHaveLength(1);
+    expect(session.leadQueue).toEqual(['lead-3', 'lead-4', 'lead-5', 'lead-6']);
+  });
+
+  it('resumes dialing on its own once the conversation ends', () => {
+    // No human step: the brief has no wrap-up screen, so a session must run to
+    // completion unattended.
+    const h = createHarness(SIX_LEADS, [
+      ROLL.ring,
+      ROLL.ring,
+      ROLL.connected,
+      ROLL.talk,
+      ROLL.ring, // the two lines refill by themselves
+      ROLL.ring,
+    ]);
+    h.ctx.dialer.start(h.sessionId);
+    h.tick(); // connect
+    h.tick(); // conversation ends
 
     const session = h.store.sessions.get(h.sessionId)!;
     expect(session.winnerCallId).toBeNull();
@@ -135,17 +166,21 @@ describe('stop', () => {
     expect(h.store.sessions.get(h.sessionId)?.status).toBe('STOPPED');
   });
 
-  it('still records a connected call that was never wrapped up', () => {
-    const h = createHarness(SIX_LEADS, [ROLL.ring, ROLL.ring, ROLL.connected]);
+  it('records a conversation that was cut short rather than losing it', () => {
+    const h = createHarness(SIX_LEADS, [ROLL.ring, ROLL.ring, ROLL.connected, ROLL.talk]);
     h.ctx.dialer.start(h.sessionId);
-    h.tick();
+    h.tick(); // connect — the conversation is still running
 
+    const winnerId = h.store.sessions.get(h.sessionId)!.winnerCallId!;
     h.ctx.dialer.stop(h.sessionId);
     h.drain();
 
-    const winnerActivity = [...h.store.activities.values()].find(
-      (a) => a.disposition === 'CALLBACK'
-    );
-    expect(winnerActivity, 'the conversation must not be lost').toBeDefined();
+    const activity = [...h.store.activities.values()].find((a) => a.callId === winnerId);
+    expect(activity, 'the call happened, so the CRM must say so').toBeDefined();
+    // Filed as what it was — a connected call — with a note saying it was cut
+    // short. Not invented as some other outcome.
+    expect(activity?.disposition).toBe('CONNECTED');
+    expect(activity?.notes).toContain('cut short');
+    expect(h.store.calls.get(winnerId)?.endedAt).not.toBeNull();
   });
 });

@@ -84,7 +84,11 @@ interface EndCallRequest {
 }
 
 /**
- * Wraps up the connected call so the agent's line frees.
+ * Hangs up the connected call early.
+ *
+ * The mocked conversation ends on its own, so this only brings that forward.
+ * The CRM write is identical either way: the disposition is derived from how
+ * the call ended, not chosen by whoever called this.
  *
  * @param ctx the app context
  * @returns a handler resolving to the updated session
@@ -99,7 +103,7 @@ export const endCall = (ctx: AppContext) =>
       );
     }
 
-    ctx.dialer.endCall(session.id, request.params.callId, request.body);
+    ctx.dialer.endCall(session.id, request.params.callId);
     return ctx.sessions.findById(session.id);
   });
 

@@ -76,6 +76,7 @@ export function createContainer(env: Env, options: ContainerOptions = {}): AppCo
     crmSync,
     clock,
     ring: { minMs: env.RING_MIN_MS, maxMs: env.RING_MAX_MS },
+    talk: { minMs: env.TALK_MIN_MS, maxMs: env.TALK_MAX_MS },
   });
 
   const sessionView = createSessionViewController({ leads, calls, activities, crm });

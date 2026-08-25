@@ -1,16 +1,15 @@
 import type { Disposition, LineView, SessionView } from '@salesdoc/shared';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { PhoneOff, PhoneCall, Users } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { CALL_STATUS_STYLES, CrmSyncBadge, StatusBadge } from '@/components/ui/badge.js';
 import { Button } from '@/components/ui/button.js';
 import { Card, CardLabel } from '@/components/ui/card.js';
 import { cn } from '@/lib/utils.js';
 
 /** Dispositions the agent can pick when wrapping up a live call. */
-const AGENT_DISPOSITIONS: Disposition[] = ['INTERESTED', 'CALLBACK', 'NOT_INTERESTED'];
-
 const DISPOSITION_LABELS: Record<Disposition, string> = {
+  CONNECTED: 'Connected',
   INTERESTED: 'Interested',
   CALLBACK: 'Call back',
   NOT_INTERESTED: 'Not interested',
@@ -23,7 +22,6 @@ const DISPOSITION_LABELS: Record<Disposition, string> = {
 /** Props for {@link Dashboard}. */
 export interface DashboardProps {
   view: SessionView;
-  onEndCall: (callId: string, outcome: { disposition: Disposition; notes: string }) => void;
   onStop: () => void;
   onReset: () => void;
   busy: boolean;
@@ -35,7 +33,7 @@ export interface DashboardProps {
  * @param props the polled session view and the agent's actions
  * @returns the dashboard
  */
-export function Dashboard({ view, onEndCall, onStop, onReset, busy }: DashboardProps) {
+export function Dashboard({ view, onStop, onReset }: DashboardProps) {
   const { session, lines, winner, history, upNext, activities } = view;
   const reduceMotion = useReducedMotion();
 
@@ -46,7 +44,12 @@ export function Dashboard({ view, onEndCall, onStop, onReset, busy }: DashboardP
 
         <div className="grid gap-5 sm:grid-cols-2">
           {[0, 1].map((index) => (
-            <LineCard key={index} index={index} line={lines[index] ?? null} />
+            <LineCard
+              key={index}
+              index={index}
+              line={lines[index] ?? null}
+              isWinner={lines[index]?.call.id === session.winnerCallId}
+            />
           ))}
         </div>
 
@@ -63,7 +66,7 @@ export function Dashboard({ view, onEndCall, onStop, onReset, busy }: DashboardP
               exit={reduceMotion ? { opacity: 1 } : { opacity: 0, scale: 0.97 }}
               transition={{ type: 'spring', stiffness: 320, damping: 26 }}
             >
-              <WinnerCard winner={winner} onEndCall={onEndCall} busy={busy} />
+              <WinnerCard winner={winner} />
             </motion.div>
           ) : (
             <QueuePreview key="queue" upNext={upNext} status={session.status} />
@@ -143,11 +146,22 @@ function SessionCard({ view }: { view: SessionView }) {
  * @param props the line index and its current call, if any
  * @returns the line card
  */
-function LineCard({ index, line }: { index: number; line: LineView | null }) {
+function LineCard({
+  index,
+  line,
+  isWinner,
+}: {
+  index: number;
+  line: LineView | null;
+  isWinner: boolean;
+}) {
   return (
-    <Card className="p-6">
+    <Card className={cn('p-6', isWinner && 'ring-2 ring-accent')}>
       <div className="flex items-center justify-between">
-        <CardLabel>Line {index + 1}</CardLabel>
+        <CardLabel>
+          Line {index + 1}
+          {isWinner && <span className="ml-2 text-ink">· on the line</span>}
+        </CardLabel>
         {line ? (
           <StatusBadge status={line.call.status} />
         ) : (
@@ -282,80 +296,74 @@ function Legend() {
 }
 
 /**
- * The connected call holding the agent. The one dark surface on the page.
+ * The connected call — "Show winner call (if connected)".
  *
- * @param props the winning line and the wrap-up handler
+ * Read-only. The brief writes disposition and notes automatically when a call
+ * reaches a terminal outcome, so there is nothing here for an agent to fill
+ * in; the conversation ends on its own and syncs itself.
+ *
+ * @param props the winning line
  * @returns the winner card
  */
-function WinnerCard({
-  winner,
-  onEndCall,
-  busy,
-}: {
-  winner: LineView;
-  onEndCall: DashboardProps['onEndCall'];
-  busy: boolean;
-}) {
-  const [disposition, setDisposition] = useState<Disposition>('INTERESTED');
-  const [notes, setNotes] = useState('');
+function WinnerCard({ winner }: { winner: LineView }) {
+  const seconds = useElapsed(winner.call.startedAt);
 
   return (
-    <Card className="overflow-hidden bg-ink p-0 text-white">
-      <div className="p-6">
-        <div className="flex items-center gap-2 text-xs text-white/60">
+    <Card className="overflow-hidden bg-ink p-6 text-white">
+      <div className="flex items-center justify-between gap-3">
+        <span className="flex items-center gap-2 text-xs text-white/60">
           <PhoneCall className="size-3.5" aria-hidden />
           On the line
-        </div>
-        <p className="mt-3 text-xl font-semibold">{winner.lead.name}</p>
-        <p className="text-sm text-white/60">{winner.lead.company}</p>
-        <p className="tnum mt-4 text-sm text-white/80">{winner.lead.phone}</p>
+        </span>
+        <span className="tnum text-sm text-white/80" aria-label="Time on this call">
+          {formatDuration(seconds)}
+        </span>
       </div>
 
-      <div className="bg-card p-6 text-ink">
-        <fieldset>
-          <legend className="text-sm font-medium">Disposition</legend>
-          <div className="mt-3 grid grid-cols-3 gap-2">
-            {AGENT_DISPOSITIONS.map((option) => (
-              <button
-                key={option}
-                type="button"
-                aria-pressed={disposition === option}
-                onClick={() => setDisposition(option)}
-                className={cn(
-                  'rounded-[var(--radius-tile)] px-2 py-3 text-xs font-medium transition-colors',
-                  disposition === option
-                    ? 'bg-ink text-white'
-                    : 'bg-bg text-muted hover:bg-ink/10'
-                )}
-              >
-                {DISPOSITION_LABELS[option]}
-              </button>
-            ))}
-          </div>
-        </fieldset>
+      <p className="mt-4 text-xl font-semibold">{winner.lead.name}</p>
+      <p className="text-sm text-white/60">{winner.lead.company}</p>
+      <p className="tnum mt-4 text-sm text-white/80">{winner.lead.phone}</p>
 
-        <label htmlFor="call-notes" className="mt-5 block text-sm font-medium">
-          Notes
-        </label>
-        <textarea
-          id="call-notes"
-          value={notes}
-          onChange={(event) => setNotes(event.target.value)}
-          rows={3}
-          placeholder="What was agreed?"
-          className="mt-2 w-full resize-none rounded-[var(--radius-tile)] bg-bg p-3 text-sm outline-none placeholder:text-muted"
-        />
-
-        <Button
-          className="mt-4 w-full"
-          disabled={busy}
-          onClick={() => onEndCall(winner.call.id, { disposition, notes })}
-        >
-          End call & save to CRM
-        </Button>
-      </div>
+      <p className="mt-5 border-t border-white/10 pt-4 text-xs text-white/50">
+        The activity is written when the call ends.
+      </p>
     </Card>
   );
+}
+
+/**
+ * Seconds since a timestamp, ticking every second.
+ *
+ * The dashboard polls at 1.5s, which would make a call timer jump in uneven
+ * steps. This is local so it counts smoothly.
+ *
+ * @param startedAt when the call began
+ * @returns whole seconds elapsed
+ */
+function useElapsed(startedAt: string): number {
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setNow(Date.now());
+    }, 1000);
+    return () => {
+      clearInterval(timer);
+    };
+  }, [startedAt]);
+
+  return Math.max(0, Math.round((now - Date.parse(startedAt)) / 1000));
+}
+
+/**
+ * Formats seconds as m:ss.
+ *
+ * @param seconds elapsed whole seconds
+ * @returns e.g. "1:07"
+ */
+function formatDuration(seconds: number): string {
+  const mins = Math.floor(seconds / 60);
+  return `${String(mins)}:${String(seconds % 60).padStart(2, '0')}`;
 }
 
 /**

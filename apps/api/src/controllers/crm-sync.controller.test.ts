@@ -2,18 +2,20 @@ import { describe, expect, it } from 'vitest';
 import { createHarness, ROLL } from '../test/harness.js';
 
 /**
- * Runs a session where line 1 connects, then wraps it up with a disposition.
+ * Runs a session until line 1 connects and its conversation runs out.
  *
- * @param notes the agent's notes to record against the call
  * @returns the harness and the winning call's id
  */
-function connectAndWrapUp(notes = 'Wants a demo next week.') {
-  const h = createHarness(['lead-1', 'lead-2'], [ROLL.ring, ROLL.ring, ROLL.connected]);
+function connectAndFinish() {
+  const h = createHarness(
+    ['lead-1', 'lead-2'],
+    [ROLL.ring, ROLL.ring, ROLL.connected, ROLL.talk]
+  );
   h.ctx.dialer.start(h.sessionId);
   h.tick();
 
   const winnerId = h.store.sessions.get(h.sessionId)!.winnerCallId!;
-  h.ctx.dialer.endCall(h.sessionId, winnerId, { disposition: 'INTERESTED', notes });
+  h.tick(); // the conversation ends on its own
   h.flushCrm();
   return { h, winnerId };
 }
@@ -28,7 +30,7 @@ describe('idempotency', () => {
     expect([...h.store.activities.values()]).toHaveLength(1);
 
     // Redeliver the same terminal event, as a flaky provider webhook would.
-    h.ctx.crmSync.sync(call, { disposition: 'NOT_INTERESTED', notes: 'duplicate' });
+    h.ctx.crmSync.sync(call, 'duplicate delivery');
     h.flushCrm();
 
     const activities = [...h.store.activities.values()];
@@ -45,7 +47,7 @@ describe('idempotency', () => {
     const call = [...h.store.calls.values()][0]!;
     // The guard is claimed before the deferred write, so a second event
     // arriving while the first is still in flight must not slip through.
-    h.ctx.crmSync.sync(call, { disposition: 'CALLBACK', notes: 'racing' });
+    h.ctx.crmSync.sync(call, 'racing');
     h.flushCrm();
 
     expect([...h.store.activities.values()]).toHaveLength(1);
@@ -97,15 +99,16 @@ describe('contact upsert', () => {
 });
 
 describe('activity contents', () => {
-  it("records the agent's disposition and notes on a connected call", () => {
-    const { h, winnerId } = connectAndWrapUp('Renewal is in March. Send pricing.');
+  it('files a connected call as CONNECTED, not CANCELED', () => {
+    const { h, winnerId } = connectAndFinish();
     const activity = [...h.store.activities.values()].find((a) => a.callId === winnerId);
 
-    expect(activity).toMatchObject({
-      type: 'CALL',
-      disposition: 'INTERESTED',
-      notes: 'Renewal is in March. Send pricing.',
-    });
+    expect(activity).toMatchObject({ type: 'CALL', disposition: 'CONNECTED' });
+    // A connected call must never be filed as CANCELED — there is no agent
+    // wrap-up supplying a disposition, so a gap in the table would do exactly
+    // that, silently.
+    expect(activity?.disposition).not.toBe('CANCELED');
+    expect(activity?.notes).not.toBe('');
   });
 
   it('derives a disposition for outcomes the agent never handled', () => {
@@ -119,7 +122,7 @@ describe('activity contents', () => {
   });
 
   it('saves the activity to both our store and the mock CRM', () => {
-    const { h } = connectAndWrapUp();
+    const { h } = connectAndFinish();
     expect(h.store.activities.size).toBe(h.store.crmActivities.size);
     expect(h.store.activities.size).toBeGreaterThan(0);
 

@@ -25,6 +25,10 @@ const EnvSchema = z.object({
   /** How long a mocked call rings before its outcome lands. */
   RING_MIN_MS: z.coerce.number().int().nonnegative().default(2000),
   RING_MAX_MS: z.coerce.number().int().nonnegative().default(6000),
+
+  /** How long a mocked conversation lasts once a lead answers. */
+  TALK_MIN_MS: z.coerce.number().int().nonnegative().default(5000),
+  TALK_MAX_MS: z.coerce.number().int().nonnegative().default(12000),
 });
 
 /** The validated environment. */
@@ -55,6 +59,9 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
   }
   if (parsed.data.RING_MIN_MS > parsed.data.RING_MAX_MS) {
     throw new Error('Invalid environment: RING_MIN_MS exceeds RING_MAX_MS');
+  }
+  if (parsed.data.TALK_MIN_MS > parsed.data.TALK_MAX_MS) {
+    throw new Error('Invalid environment: TALK_MIN_MS exceeds TALK_MAX_MS');
   }
 
   return parsed.data;

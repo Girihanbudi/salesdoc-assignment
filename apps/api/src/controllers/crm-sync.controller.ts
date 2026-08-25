@@ -1,16 +1,10 @@
-import type { Call, Disposition } from '@salesdoc/shared';
+import { isTerminal, type Call } from '@salesdoc/shared';
 import { AUTO_DISPOSITION, AUTO_NOTES } from '../constant/crm.js';
 import { contactFromLead, type MockCrmClient } from '../mocks/mock-crm.client.js';
 import type { ActivitiesRepository } from '../repositories/activities.repository.js';
 import type { CrmRepository } from '../repositories/crm.repository.js';
 import type { LeadsRepository } from '../repositories/leads.repository.js';
 import type { Clock } from '../utils/clock.js';
-
-/** The agent's wrap-up, when there was one. */
-export interface CallOutcome {
-  disposition: Disposition;
-  notes: string;
-}
 
 /** What {@link createCrmSyncController} needs to do its job. */
 export interface CrmSyncControllerDeps {
@@ -23,7 +17,11 @@ export interface CrmSyncControllerDeps {
 
 /** Writes terminal calls to the CRM, exactly once each. */
 export interface CrmSyncController {
-  sync: (call: Call, outcome?: CallOutcome) => void;
+  /**
+   * @param call a call that has reached a terminal status
+   * @param notesOverride replaces the derived note, for a call cut short
+   */
+  sync: (call: Call, notesOverride?: string) => void;
 }
 
 /**
@@ -38,7 +36,15 @@ export interface CrmSyncController {
  */
 export function createCrmSyncController(deps: CrmSyncControllerDeps): CrmSyncController {
   return {
-    sync(call, outcome) {
+    sync(call, notesOverride) {
+      // A call still ringing has no outcome to record; writing one would put a
+      // fabricated disposition in the CRM.
+      if (!isTerminal(call.status)) return;
+
+      // Captured here because the narrowing does not survive into the deferred
+      // callback below.
+      const status = call.status;
+
       // Claimed BEFORE the deferred write, so two events racing in the same
       // tick cannot both pass the guard.
       if (deps.crm.hasSynced(call.id)) return;
@@ -66,8 +72,8 @@ export function createCrmSyncController(deps: CrmSyncControllerDeps): CrmSyncCon
             crmExternalId: contact.id,
             leadId: lead.id,
             callId: call.id,
-            disposition: outcome?.disposition ?? AUTO_DISPOSITION[call.status] ?? 'CANCELED',
-            notes: outcome?.notes || (AUTO_NOTES[call.status] ?? ''),
+            disposition: AUTO_DISPOSITION[status],
+            notes: notesOverride ?? AUTO_NOTES[status],
           },
           deps.clock.id()
         );
