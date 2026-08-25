@@ -29,6 +29,16 @@ const CHECKS = {
   typecheck: () => ['npm', ['run', 'typecheck']],
   /** @returns {[string,string[]]|null} */
   test: () => ['npm', ['run', 'test', '--', '--run']],
+
+  /**
+   * Build before testing: the static-serving tests assert against a real
+   * `apps/web/dist`, so on a clean checkout they fail with 404s. Locally they
+   * passed on a stale dist left by an earlier build, which meant the suite was
+   * green on this machine and red anywhere else.
+   *
+   * @returns {[string,string[]]|null}
+   */
+  build: () => ['npm', ['run', 'build']],
 };
 
 /**
@@ -97,7 +107,7 @@ const payload = full ? {} : await readHookPayload();
 const file = payload?.tool_input?.file_path;
 
 const steps = full
-  ? [CHECKS.lint('.'), CHECKS.typecheck(), CHECKS.test()]
+  ? [CHECKS.lint('.'), CHECKS.typecheck(), CHECKS.build(), CHECKS.test()]
   : [CHECKS.lint(file), CHECKS.typecheck()];
 
 // Nothing configured yet. Silent locally, but NEVER silently green in CI —
