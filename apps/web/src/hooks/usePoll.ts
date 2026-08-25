@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 /** What a poll currently knows. */
 export interface PollState<T> {
@@ -78,5 +78,11 @@ export function usePoll<T>(
     };
   }, [intervalMs, enabled, nonce]);
 
-  return { data, error, loading, refresh: () => setNonce((n) => n + 1) };
+  // Stable: callers put `refresh` in effect dependency arrays, and a fresh
+  // identity each render turns one of those into a render loop.
+  const refresh = useCallback(() => {
+    setNonce((n) => n + 1);
+  }, []);
+
+  return { data, error, loading, refresh };
 }
