@@ -91,10 +91,7 @@ export function upsertContact(deps: CrmDeps, lead: Lead): string {
  *
  * @param deps injected store, clock, id generator, and scheduler
  * @param call the call that reached a terminal status
- * @param outcome disposition and notes; supplied by the agent for a connected
- *   call, derived from the status otherwise
- * @param outcome.disposition
- * @param outcome.notes
+ * @param outcome the agent's disposition and notes for a connected call; omitted for machine outcomes, where both are derived from the call status
  */
 export function syncToCrm(
   deps: CrmDeps,

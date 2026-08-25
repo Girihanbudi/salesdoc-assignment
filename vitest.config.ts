@@ -9,18 +9,14 @@ export default defineConfig({
           root: './apps/server',
           environment: 'node',
           include: ['src/**/*.test.ts'],
+          // The first fastify.inject() pays a one-time boot cost that can pass
+          // 5s on a cold machine. The tests themselves are milliseconds.
+          testTimeout: 20_000,
         },
       },
-      {
-        test: {
-          name: 'web',
-          root: './apps/web',
-          environment: 'jsdom',
-          globals: true,
-          include: ['src/**/*.test.tsx'],
-          setupFiles: ['./src/test-setup.ts'],
-        },
-      },
+      // Referenced by path so it inherits apps/web/vite.config.ts — the react
+      // plugin and the `@/` alias — instead of duplicating them here.
+      './apps/web',
     ],
   },
 });

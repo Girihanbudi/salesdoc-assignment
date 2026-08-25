@@ -40,13 +40,24 @@ export default tseslint.config(
       'jsdoc/require-param-type': 'off',
       'jsdoc/require-returns-type': 'off',
       'jsdoc/tag-lines': 'off',
+      // Document the parameter, not each of its fields — the type already
+      // names them, and one tag per sub-property is noise.
+      'jsdoc/require-param': ['warn', { checkDestructured: false }],
+      'jsdoc/check-param-names': ['warn', { checkDestructured: false }],
       '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
     },
   },
   {
-    // A React component returning JSX gains nothing from "@returns the JSX".
+    // Components still need a doc comment saying what they are for, but
+    // "@param props.className the class name" is the noise CLAUDE.md warns
+    // against — the prop types already say it, and the destructured shape
+    // makes jsdoc demand one tag per prop.
     files: ['**/*.tsx'],
-    rules: { 'jsdoc/require-returns': 'off' },
+    rules: {
+      'jsdoc/require-returns': 'off',
+      'jsdoc/require-param': 'off',
+      'jsdoc/check-param-names': 'off',
+    },
   },
   {
     files: ['**/*.test.ts', '**/*.test.tsx'],

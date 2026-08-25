@@ -59,7 +59,10 @@ function run(cmd) {
 }
 
 const full = process.argv.includes('--full');
-const payload = await readHookPayload();
+// --full checks everything, so it needs no payload. Skipping the read matters:
+// stdin is only closed for us when a hook supplies it, so reading here would
+// hang a manual `node check.mjs --full` from a terminal or a script.
+const payload = full ? {} : await readHookPayload();
 const file = payload?.tool_input?.file_path;
 
 const steps = full

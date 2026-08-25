@@ -4,7 +4,9 @@ import { createHarness, ROLL } from './test-harness.js';
 
 /**
  * Runs a session where line 1 connects, then wraps it up with a disposition.
- * @param notes
+ *
+ * @param notes the agent's notes to record against the call
+ * @returns the harness and the winning call's id
  */
 function connectAndWrapUp(notes = 'Wants a demo next week.') {
   const h = createHarness(['lead-1', 'lead-2'], [ROLL.ring, ROLL.ring, ROLL.connected]);
