@@ -206,6 +206,33 @@ Rules:
   `BREAKING CHANGE:` footer explaining the migration.
 - The body explains *why*, not a list of files. `git diff` already lists files.
 
+## Branch and release flow
+
+```
+branch off main ──▶ PR to main ──▶ gate passes ──▶ merge ──▶ tag vX.Y.Z ──▶ deploy
+```
+
+`main` is never pushed to directly. `.github/workflows/check.yml` gates every
+PR; `.github/workflows/release.yml` deploys only on a `v*` tag. Render's own
+auto-deploy is off — a merge alone ships nothing.
+
+Claude's half of that line ends at **PR created**. Merging and tagging are the
+human's, always, no matter how the request is worded: a tag is a release, and
+whoever owns the release cuts it.
+
+The PR needs the GitHub CLI (`gh --version` to check; `winget install
+GitHub.cli` if missing). `gh auth login` wants `read:org`, which the git
+credential does not carry, so authenticate per-command instead:
+
+```bash
+export GH_TOKEN=$(printf 'protocol=https\nhost=github.com\n\n' \
+  | git credential fill | sed -n 's/^password=//p')
+```
+
+That reuses the token git already pushes with — `repo` scope, enough to open a
+PR and set an assignee. Never echo it. `--add-reviewer` needs `read:org` and
+will fail; leave reviewers to the human.
+
 ## Always
 
 - Validate and narrow input at every API boundary. Never trust a request body.
@@ -219,6 +246,8 @@ Rules:
 - No barrel / re-export aggregation files.
 - No new README, CHANGELOG, or docs file unless asked.
 - No committing or pushing unless asked. Never push to `main`; open a PR.
+- Never merge a PR. Never create, move, or delete a release tag. Never trigger a
+  deploy hook by hand. Those three are mine.
 
 ## Working style
 

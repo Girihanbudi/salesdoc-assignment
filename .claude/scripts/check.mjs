@@ -29,6 +29,16 @@ const CHECKS = {
   typecheck: () => ['npm', ['run', 'typecheck']],
   /** @returns {[string,string[]]|null} */
   test: () => ['npm', ['run', 'test', '--', '--run']],
+
+  /**
+   * Build before testing: the static-serving tests assert against a real
+   * `apps/web/dist`, so on a clean checkout they fail with 404s. Locally they
+   * passed on a stale dist left by an earlier build, which meant the suite was
+   * green on this machine and red anywhere else.
+   *
+   * @returns {[string,string[]]|null}
+   */
+  build: () => ['npm', ['run', 'build']],
 };
 
 /**
@@ -80,6 +90,10 @@ function run(cmd) {
     cwd: ROOT,
     encoding: 'utf8',
     shell: process.platform === 'win32',
+    // Default is 1MB, and vitest on a CI runner blows past it — spawnSync then
+    // returns ENOBUFS, which reads as "npm is broken" rather than "too much
+    // output". Nothing here streams, so there is no reason to cap it at all.
+    maxBuffer: Infinity,
   });
   if (r.error) return { ok: false, out: `${bin}: ${r.error.message}` };
   return { ok: r.status === 0, out: `${r.stdout ?? ''}${r.stderr ?? ''}`.trim() };
@@ -93,7 +107,7 @@ const payload = full ? {} : await readHookPayload();
 const file = payload?.tool_input?.file_path;
 
 const steps = full
-  ? [CHECKS.lint('.'), CHECKS.typecheck(), CHECKS.test()]
+  ? [CHECKS.lint('.'), CHECKS.typecheck(), CHECKS.build(), CHECKS.test()]
   : [CHECKS.lint(file), CHECKS.typecheck()];
 
 // Nothing configured yet. Silent locally, but NEVER silently green in CI —
