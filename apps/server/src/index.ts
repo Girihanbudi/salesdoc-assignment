@@ -2,7 +2,7 @@ import { resolve } from 'node:path';
 import fastifyStatic from '@fastify/static';
 import { buildApp } from './app.js';
 
-const app = buildApp({ logger: true });
+const app = await buildApp({ logger: true, docs: true });
 
 if (process.env['NODE_ENV'] === 'production') {
   // One process, one port: Fastify serves the API and the React build together,

@@ -2,10 +2,22 @@ node_modules
 **/node_modules
 dist
 **/dist
+dist-types
+**/dist-types
 coverage
+
+# Critical: tsbuildinfo without its dist/ makes `tsc --build` believe the
+# project is already built, so it emits nothing and the image ships empty.
+# The build then "succeeds" and the deploy is broken.
+*.tsbuildinfo
+**/*.tsbuildinfo
+
 .git
+.gitignore
 .github
 .claude
 docs
+Dockerfile
+.dockerignore
 *.md
 !README.md

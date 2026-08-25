@@ -3,7 +3,7 @@ import { buildApp } from './app.js';
 
 describe('POST /api/sessions', () => {
   it('rejects a body whose leadIds is not an array', async () => {
-    const app = buildApp();
+    const app = await buildApp();
     const res = await app.inject({
       method: 'POST',
       url: '/api/sessions',
@@ -15,7 +15,7 @@ describe('POST /api/sessions', () => {
   });
 
   it('rejects an empty selection', async () => {
-    const app = buildApp();
+    const app = await buildApp();
     const res = await app.inject({
       method: 'POST',
       url: '/api/sessions',
@@ -26,7 +26,7 @@ describe('POST /api/sessions', () => {
   });
 
   it('rejects a lead that does not exist', async () => {
-    const app = buildApp();
+    const app = await buildApp();
     const res = await app.inject({
       method: 'POST',
       url: '/api/sessions',
@@ -38,7 +38,7 @@ describe('POST /api/sessions', () => {
   });
 
   it('creates a session queued with the selected leads', async () => {
-    const app = buildApp();
+    const app = await buildApp();
     const res = await app.inject({
       method: 'POST',
       url: '/api/sessions',
@@ -59,7 +59,7 @@ describe('POST /api/sessions', () => {
 
 describe('unknown resources', () => {
   it('404s an unknown session', async () => {
-    const app = buildApp();
+    const app = await buildApp();
     const res = await app.inject({ method: 'GET', url: '/api/sessions/nope' });
 
     expect(res.statusCode).toBe(404);
@@ -67,7 +67,7 @@ describe('unknown resources', () => {
   });
 
   it('404s crm-activities for an unknown lead', async () => {
-    const app = buildApp();
+    const app = await buildApp();
     const res = await app.inject({ method: 'GET', url: '/leads/nope/crm-activities' });
 
     expect(res.statusCode).toBe(404);
@@ -76,7 +76,7 @@ describe('unknown resources', () => {
 
 describe('ending a call', () => {
   it('409s when the call is not the one holding the agent', async () => {
-    const app = buildApp();
+    const app = await buildApp();
     const created = await app.inject({
       method: 'POST',
       url: '/api/sessions',
@@ -95,7 +95,7 @@ describe('ending a call', () => {
   });
 
   it('rejects a disposition outside the allowed set', async () => {
-    const app = buildApp();
+    const app = await buildApp();
     const created = await app.inject({
       method: 'POST',
       url: '/api/sessions',
@@ -116,7 +116,7 @@ describe('ending a call', () => {
 
 describe('seeded data', () => {
   it('serves between four and eight leads, as the brief requires', async () => {
-    const app = buildApp();
+    const app = await buildApp();
     const leads = (await app.inject({ method: 'GET', url: '/api/leads' })).json();
 
     expect(leads.length).toBeGreaterThanOrEqual(4);
@@ -127,7 +127,7 @@ describe('seeded data', () => {
   });
 
   it('starts the mock CRM empty so activity creation is observable', async () => {
-    const app = buildApp();
+    const app = await buildApp();
     const contacts = (await app.inject({ url: '/mock-crm/contacts' })).json();
     const activities = (await app.inject({ url: '/mock-crm/activities' })).json();
 
