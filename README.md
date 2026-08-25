@@ -243,13 +243,15 @@ separate decisions, so they have separate triggers.
 
 ```
 branch off main  ->  PR to main  ->  merge  ->  tag vX.Y.Z  ->  deploy
-                     └ check.yml            └ release.yml ┘
+                     └ check.mjs, locally    └ release.yml ┘
 ```
 
 | Workflow | Fires on | Does |
 |---|---|---|
-| `check.yml` | PR to `main`, push to `main` | lint, typecheck, tests, and builds + boots the Docker image |
-| `release.yml` | tag matching `v*` | re-runs the whole gate on the tagged commit, then deploys |
+| `release.yml` | tag matching `v*` | lint, typecheck, tests, builds + boots the Docker image, then deploys |
+
+Actions runs on a tag and nothing else. Before merging a PR, run the same gate
+locally — `node .claude/scripts/check.mjs --full`.
 
 Cutting a release:
 

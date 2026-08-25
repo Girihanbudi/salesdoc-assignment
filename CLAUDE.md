@@ -93,10 +93,9 @@ Non-negotiable order. Do not skip to step 3.
 Lint and type checks run automatically on every file you write. Fix what comes
 back; do not work around it.
 
-CI lands on a separate branch and runs the exact same gate —
-`node .claude/scripts/check.mjs --full`. If a check needs to change, change it
-there, not in the workflow file. Never add a CI-only step that can't be run
-locally.
+CI runs the exact same gate — `node .claude/scripts/check.mjs --full`. If a
+check needs to change, change it there, not in the workflow file. Never add a
+CI-only step that can't be run locally.
 
 ## Documentation
 
@@ -209,12 +208,18 @@ Rules:
 ## Branch and release flow
 
 ```
-branch off main ──▶ PR to main ──▶ gate passes ──▶ merge ──▶ tag vX.Y.Z ──▶ deploy
+branch off main ──▶ PR to main ──▶ merge ──▶ tag vX.Y.Z ──▶ gate passes ──▶ deploy
 ```
 
-`main` is never pushed to directly. `.github/workflows/check.yml` gates every
-PR; `.github/workflows/release.yml` deploys only on a `v*` tag. Render's own
-auto-deploy is off — a merge alone ships nothing.
+`main` is never pushed to directly. `.github/workflows/release.yml` is the only
+workflow, and a `v*` tag is the only thing that starts it: it runs the full gate
+on the tagged commit and deploys only if that passes. Render's own auto-deploy
+is off — a merge alone ships nothing.
+
+Nothing runs in Actions on a PR. The gate before a merge is the local one —
+`node .claude/scripts/check.mjs --full`, the same command CI runs, fired by the
+Stop hook on every write. Run it yourself before opening a PR; a break that
+slips past it sits on `main` until the next tag catches it.
 
 Claude's half of that line ends at **PR created**. Merging and tagging are the
 human's, always, no matter how the request is worded: a tag is a release, and
