@@ -11,11 +11,14 @@ import { createLeadsRepository } from './repositories/leads.repository.js';
 import { createSessionsRepository } from './repositories/sessions.repository.js';
 import type { AppContext } from './types/context.js';
 import { createClock, type Clock } from './utils/clock.js';
+import { guarded, type GuardLogger } from './utils/guarded.js';
 
 /** Overrides for tests, which supply their own store and clock. */
 export interface ContainerOptions {
   store?: Store;
   clock?: Clock;
+  /** Where a failure inside scheduled work is reported. */
+  logger?: GuardLogger;
   /**
    * Scheduler for deferred CRM writes. Defaults to `clock`.
    *
@@ -38,8 +41,13 @@ export interface ContainerOptions {
  */
 export function createContainer(env: Env, options: ContainerOptions = {}): AppContext {
   const store = options.store ?? createStore();
-  const clock = options.clock ?? createClock();
-  const crmClock = options.crmClock ?? clock;
+  const logger = options.logger ?? console;
+
+  // Guarded here rather than at each call site: every scheduled callback in the
+  // dialer and the CRM sync runs outside a request, where an uncaught throw
+  // would take the process down.
+  const clock = guarded(options.clock ?? createClock(), logger);
+  const crmClock = guarded(options.crmClock ?? options.clock ?? createClock(), logger);
 
   const leads = createLeadsRepository(store);
   const calls = createCallsRepository(store);
