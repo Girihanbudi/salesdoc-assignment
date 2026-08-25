@@ -1,86 +1,25 @@
 import {
-  ApiFailureSchema,
+  CRMActivitySchema,
+  CRMContactSchema,
   DialerSessionSchema,
   LeadSchema,
-  MetaSchema,
   SessionViewSchema,
-  type Disposition,
+  type CRMActivity,
+  type CRMContact,
   type DialerSession,
+  type Disposition,
   type Lead,
   type SessionView,
 } from '@salesdoc/shared';
 import { z } from 'zod';
-
-/** Thrown for any non-2xx response, carrying the API's machine-readable code. */
-export class ApiError extends Error {
-  readonly code: string;
-  readonly details: { path: string; message: string }[] | undefined;
-
-  /**
-   * @param code the API's error code, e.g. `SESSION.NOT_FOUND`
-   * @param message human-readable explanation
-   * @param details per-field validation failures, when there were any
-   */
-  constructor(
-    code: string,
-    message: string,
-    details?: { path: string; message: string }[]
-  ) {
-    super(message);
-    this.name = 'ApiError';
-    this.code = code;
-    this.details = details;
-  }
-}
-
-/** The envelope's own shape. The payload inside is checked separately. */
-const SuccessEnvelopeSchema = z.object({
-  success: z.literal(true),
-  data: z.unknown(),
-  meta: MetaSchema,
-});
+import { rawRequest, request } from '@/lib/fetcher.js';
 
 /**
- * Calls the API and validates the response against a schema.
+ * Every endpoint the client calls, and nothing else.
  *
- * Parsing on the way in means a backend contract change surfaces here as one
- * clear error rather than as `undefined` deep inside a component.
- *
- * @param schema the expected response shape
- * @param path the API path
- * @param init fetch options
- * @returns the parsed body
- * @throws when the request fails or the body does not match the schema
+ * Transport, envelope unwrapping, and error translation live in
+ * `lib/fetcher.ts`; this file is only the list of URLs and their shapes.
  */
-async function request<T>(
-  schema: z.ZodType<T>,
-  path: string,
-  init?: RequestInit
-): Promise<T> {
-  const res = await fetch(path, {
-    ...init,
-    ...(init?.body ? { headers: { 'content-type': 'application/json' } } : {}),
-  });
-
-  const body: unknown = await res.json().catch(() => null);
-
-  if (!res.ok) {
-    const failure = ApiFailureSchema.safeParse(body);
-    throw failure.success
-      ? new ApiError(
-          failure.data.error.code,
-          failure.data.error.message,
-          failure.data.error.details
-        )
-      : new ApiError('UNKNOWN', `Request failed (${res.status})`);
-  }
-
-  // Checked in two layers because a generic payload schema does not survive
-  // zod's inference inside a wrapper: the envelope is validated structurally,
-  // then the payload against its own schema.
-  const enveloped = SuccessEnvelopeSchema.parse(body);
-  return schema.parse(enveloped.data);
-}
 
 /**
  * Fetches the seeded leads.
@@ -111,9 +50,7 @@ export function createSession(leadIds: string[]): Promise<DialerSession> {
  * @returns the updated session
  */
 export function startSession(sessionId: string): Promise<DialerSession> {
-  return request(DialerSessionSchema, `/api/sessions/${sessionId}/start`, {
-    method: 'POST',
-  });
+  return request(DialerSessionSchema, `/api/sessions/${sessionId}/start`, { method: 'POST' });
 }
 
 /**
@@ -123,9 +60,7 @@ export function startSession(sessionId: string): Promise<DialerSession> {
  * @returns the updated session
  */
 export function stopSession(sessionId: string): Promise<DialerSession> {
-  return request(DialerSessionSchema, `/api/sessions/${sessionId}/stop`, {
-    method: 'POST',
-  });
+  return request(DialerSessionSchema, `/api/sessions/${sessionId}/stop`, { method: 'POST' });
 }
 
 /**
@@ -151,9 +86,29 @@ export function endCall(
   callId: string,
   outcome: { disposition: Disposition; notes: string }
 ): Promise<DialerSession> {
-  return request(
-    DialerSessionSchema,
-    `/api/sessions/${sessionId}/calls/${callId}/end`,
-    { method: 'POST', body: JSON.stringify(outcome) }
-  );
+  return request(DialerSessionSchema, `/api/sessions/${sessionId}/calls/${callId}/end`, {
+    method: 'POST',
+    body: JSON.stringify(outcome),
+  });
+}
+
+/**
+ * Reads the mock CRM's contacts.
+ *
+ * Unenveloped: these stand in for a third party's API, so the response is
+ * parsed as the bare array such a system would return.
+ *
+ * @returns every contact the mock CRM holds
+ */
+export function getCrmContacts(): Promise<CRMContact[]> {
+  return rawRequest(z.array(CRMContactSchema), '/mock-crm/contacts');
+}
+
+/**
+ * Reads the mock CRM's activities.
+ *
+ * @returns every activity the mock CRM holds
+ */
+export function getCrmActivities(): Promise<CRMActivity[]> {
+  return rawRequest(z.array(CRMActivitySchema), '/mock-crm/activities');
 }

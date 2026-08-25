@@ -3,7 +3,11 @@ import { useEffect, useRef, useState } from 'react';
 /** What a poll currently knows. */
 export interface PollState<T> {
   data: T | null;
-  error: string | null;
+  /**
+   * The thrown value, not a string. Flattening it to `.message` here would
+   * discard the ApiError code the error handler needs to pick its wording.
+   */
+  error: unknown;
   /** True until the first response arrives, successful or not. */
   loading: boolean;
   /** Forces an immediate refetch, e.g. after a mutation. */
@@ -28,7 +32,7 @@ export function usePoll<T>(
   enabled = true
 ): PollState<T> {
   const [data, setData] = useState<T | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<unknown>(null);
   const [loading, setLoading] = useState(true);
   const [nonce, setNonce] = useState(0);
 
@@ -50,7 +54,7 @@ export function usePoll<T>(
         setError(null);
       } catch (cause) {
         if (cancelled) return;
-        setError(cause instanceof Error ? cause.message : 'Request failed');
+        setError(cause);
       } finally {
         if (!cancelled) setLoading(false);
       }

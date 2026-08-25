@@ -11,7 +11,6 @@ export interface LeadPickerProps {
   /** Called with the selected lead ids, in table order. */
   onStart: (leadIds: string[]) => void;
   busy: boolean;
-  error: string | null;
 }
 
 /**
@@ -20,7 +19,7 @@ export interface LeadPickerProps {
  * @param props the leads to show and the start handler
  * @returns the lead table
  */
-export function LeadPicker({ leads, onStart, busy, error }: LeadPickerProps) {
+export function LeadPicker({ leads, onStart, busy }: LeadPickerProps) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
 
   const toggle = (id: string): void => {
@@ -112,11 +111,7 @@ export function LeadPicker({ leads, onStart, busy, error }: LeadPickerProps) {
 
       <div className="flex items-center justify-between border-t border-line px-7 py-5">
         <p className="text-sm text-muted" role="status">
-          {error ? (
-            <span className="text-neg">{error}</span>
-          ) : (
-            `${selected.size} selected`
-          )}
+          {selected.size} selected
         </p>
         <Button
           onClick={() => onStart(leads.filter((l) => selected.has(l.id)).map((l) => l.id))}

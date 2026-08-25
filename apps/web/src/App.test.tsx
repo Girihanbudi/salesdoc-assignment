@@ -68,12 +68,49 @@ describe('lead selection', () => {
   });
 });
 
-describe('error state', () => {
-  it('offers a retry rather than an empty screen when the fetch fails', async () => {
-    vi.stubGlobal('fetch', vi.fn(() => Promise.reject(new Error('Network down'))));
+describe('error handling', () => {
+  it('explains an unreachable server instead of showing "Failed to fetch"', async () => {
+    // fetch rejects with a bare TypeError when nothing is listening. Surfacing
+    // that verbatim tells the user nothing they can act on.
+    vi.stubGlobal('fetch', vi.fn(() => Promise.reject(new TypeError('Failed to fetch'))));
     render(<App />);
 
-    expect(await screen.findByText('Network down')).toBeInTheDocument();
+    expect(await screen.findByText('Cannot reach the server')).toBeInTheDocument();
+    expect(screen.queryByText(/failed to fetch/i)).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: /retry/i })).toBeInTheDocument();
+  });
+
+  it('translates a server error code rather than echoing the server wording', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() =>
+        Promise.resolve(
+          new Response(
+            JSON.stringify({
+              success: false,
+              error: { code: 'INTERNAL', message: 'connection pool exhausted' },
+              meta: { requestId: 'req-1', timestamp: new Date().toISOString() },
+            }),
+            { status: 500 }
+          )
+        )
+      )
+    );
+    render(<App />);
+
+    expect(await screen.findByText(/something went wrong on our end/i)).toBeInTheDocument();
+    // Internal detail must never reach the user.
+    expect(screen.queryByText(/connection pool/i)).not.toBeInTheDocument();
+  });
+
+  it('lets a toast be dismissed', async () => {
+    const user = userEvent.setup();
+    vi.stubGlobal('fetch', vi.fn(() => Promise.reject(new TypeError('Failed to fetch'))));
+    render(<App />);
+
+    const toast = await screen.findByText('Cannot reach the server');
+    await user.click(screen.getByRole('button', { name: /dismiss/i }));
+
+    await waitFor(() => expect(toast).not.toBeInTheDocument());
   });
 });
