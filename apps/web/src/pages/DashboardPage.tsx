@@ -9,6 +9,8 @@ export interface DashboardPageProps {
   leadCount: number;
   sessions: DialerSession[];
   activities: CRMActivity[];
+  /** The session this browser started and is polling, if any. */
+  activeSessionId: string | null;
 }
 
 /**
@@ -20,8 +22,22 @@ export interface DashboardPageProps {
  * @param props counts and the most recent session
  * @returns the dashboard
  */
-export function DashboardPage({ leadCount, sessions, activities }: DashboardPageProps) {
-  const active = sessions.find((s) => s.status === 'RUNNING') ?? sessions[0] ?? null;
+export function DashboardPage({
+  leadCount,
+  sessions,
+  activities,
+  activeSessionId,
+}: DashboardPageProps) {
+  // Prefer the session this browser is actually running. Falling straight to
+  // "newest on the server" would point an agent at somebody else's session
+  // once there is more than one.
+  const active =
+    sessions.find((s) => s.id === activeSessionId) ??
+    sessions.find((s) => s.status === 'RUNNING') ??
+    sessions[0] ??
+    null;
+
+  const isLive = active !== null && active.status === 'RUNNING';
 
   return (
     <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
@@ -34,18 +50,26 @@ export function DashboardPage({ leadCount, sessions, activities }: DashboardPage
       />
 
       <NavCard
-        to={active === null ? PATHS.dial : PATHS.session(active.id)}
+        // A live session opens the dialer, where it keeps updating; a finished
+        // one opens its log, which is all that is left to see.
+        to={
+          active === null
+            ? PATHS.dial
+            : isLive
+              ? `${PATHS.dial}?session=${active.id}`
+              : PATHS.session(active.id)
+        }
         icon={PhoneCall}
-        label={active?.status === 'RUNNING' ? 'Active session' : 'Last session'}
+        label={isLive ? 'Active session' : 'Last session'}
         value={active === null ? '—' : `${String(active.metrics.attempted)} attempts`}
         hint={
           active === null
             ? 'No session yet — start one'
-            : active.status === 'RUNNING'
-              ? 'Running now · open it'
+            : isLive
+              ? `${String(active.metrics.connected)} connected · still dialing`
               : 'Finished · view the log'
         }
-        highlight={active?.status === 'RUNNING'}
+        highlight={isLive}
       />
 
       <NavCard

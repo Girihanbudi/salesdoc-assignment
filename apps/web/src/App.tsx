@@ -1,19 +1,11 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { BrowserRouter, useLocation } from 'react-router-dom';
 import { Shell } from '@/components/Shell.js';
 import { Snackbar } from '@/components/ui/snackbar.js';
+import { useActiveSession } from '@/hooks/useActiveSession.js';
 import { ToastProvider, useToast } from '@/hooks/useToasts.js';
 import { AppRoutes } from '@/routes/AppRoutes.js';
 import { PATHS } from '@/routes/paths.js';
-
-/**
- * Where the last session id is remembered.
- *
- * The URL owns the current screen, but leaving a session drops the id from it —
- * so this is what lets the dialer offer "resume" rather than stranding a
- * running session with no way back.
- */
-const LAST_SESSION_KEY = 'salesdoc:last-session';
 
 /** Heading per route. Longest-prefix entries come first. */
 const HEADINGS: { match: (path: string) => boolean; title: string; subtitle: string }[] = [
@@ -75,26 +67,7 @@ function AppFrame() {
   const toasts = useToast();
   const { pathname } = useLocation();
 
-  const [resumable, setResumable] = useState<string | null>(() => readLastSession());
-
-  const rememberSession = useCallback((sessionId: string) => {
-    setResumable(sessionId);
-    try {
-      window.localStorage.setItem(LAST_SESSION_KEY, sessionId);
-    } catch {
-      // Private mode or blocked storage. Resume is a convenience, not a
-      // requirement — the app works without it.
-    }
-  }, []);
-
-  const forgetSession = useCallback(() => {
-    setResumable(null);
-    try {
-      window.localStorage.removeItem(LAST_SESSION_KEY);
-    } catch {
-      /* see above */
-    }
-  }, []);
+  const activeSession = useActiveSession();
 
   // Every route change starts at the top; without this, opening a detail page
   // from halfway down a long list lands mid-page.
@@ -108,26 +81,13 @@ function AppFrame() {
     <>
       <Shell title={heading.title} subtitle={heading.subtitle}>
         <AppRoutes
-          resumableSessionId={resumable}
-          onSessionStarted={rememberSession}
-          onSessionForgotten={forgetSession}
+          activeSessionId={activeSession.sessionId}
+          onSessionStarted={activeSession.remember}
+          onSessionFinished={activeSession.forget}
         />
       </Shell>
 
       <Snackbar toasts={toasts.toasts} onDismiss={toasts.dismiss} />
     </>
   );
-}
-
-/**
- * Reads the remembered session id.
- *
- * @returns the id, or null when there is none or storage is unavailable
- */
-function readLastSession(): string | null {
-  try {
-    return window.localStorage.getItem(LAST_SESSION_KEY);
-  } catch {
-    return null;
-  }
 }

@@ -206,7 +206,7 @@ describe('session in the URL', () => {
   });
 
   it('offers a way back into a session left running', async () => {
-    window.localStorage.setItem('salesdoc:last-session', 'session-abc');
+    window.localStorage.setItem('salesdoc:active-session', 'session-abc');
     renderAt('/dial');
 
     expect(await screen.findByText(/session in progress/i)).toBeInTheDocument();
@@ -218,5 +218,76 @@ describe('session in the URL', () => {
 
     await screen.findByText('Amara Osei');
     expect(screen.queryByText(/session in progress/i)).not.toBeInTheDocument();
+  });
+});
+
+describe('polling lifecycle', () => {
+  /**
+   * A session view with a chosen status.
+   *
+   * @param status whether the session is still dialing
+   * @returns the payload
+   */
+  function sessionWith(status: 'RUNNING' | 'STOPPED') {
+    return { ...SESSION_VIEW, session: { ...SESSION_VIEW.session, status } };
+  }
+
+  it('stops polling once the session finishes', async () => {
+    // Nothing about a finished session can change again, so polling on would
+    // be a request every 1.5s forever — and on a free tier that keeps the
+    // server awake for no reason.
+    const fetchMock = vi.fn((url: string) => {
+      if (url.includes('/api/sessions/')) {
+        return Promise.resolve(enveloped(sessionWith('STOPPED')));
+      }
+      return Promise.resolve(enveloped(LEADS));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderAt('/dial?session=session-abc');
+    await screen.findByText(/line 1/i);
+
+    const callsAfterLoad = fetchMock.mock.calls.length;
+    await new Promise((resolve) => setTimeout(resolve, 3500));
+
+    expect(fetchMock.mock.calls.length).toBe(callsAfterLoad);
+  });
+
+  it('forgets a finished session, so it is not offered for resume', async () => {
+    window.localStorage.setItem('salesdoc:active-session', 'session-abc');
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string) => {
+        if (url.includes('/api/sessions/')) {
+          return Promise.resolve(enveloped(sessionWith('STOPPED')));
+        }
+        return Promise.resolve(enveloped(LEADS));
+      })
+    );
+
+    renderAt('/dial?session=session-abc');
+    await screen.findByText(/line 1/i);
+
+    await waitFor(() => {
+      expect(window.localStorage.getItem('salesdoc:active-session')).toBeNull();
+    });
+  });
+
+  it('keeps polling while the session is still running', async () => {
+    const fetchMock = vi.fn((url: string) => {
+      if (url.includes('/api/sessions/')) {
+        return Promise.resolve(enveloped(sessionWith('RUNNING')));
+      }
+      return Promise.resolve(enveloped(LEADS));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderAt('/dial?session=session-abc');
+    await screen.findByText(/line 1/i);
+
+    const callsAfterLoad = fetchMock.mock.calls.length;
+    await waitFor(() => expect(fetchMock.mock.calls.length).toBeGreaterThan(callsAfterLoad), {
+      timeout: 4000,
+    });
   });
 });

@@ -17,9 +17,10 @@ const LIST_POLL_MS = 5000;
 
 /** Props for {@link AppRoutes}. */
 export interface AppRoutesProps {
-  resumableSessionId: string | null;
+  /** A session this browser started that has not finished, if any. */
+  activeSessionId: string | null;
   onSessionStarted: (sessionId: string) => void;
-  onSessionForgotten: () => void;
+  onSessionFinished: () => void;
 }
 
 /**
@@ -35,7 +36,10 @@ export function AppRoutes(props: AppRoutesProps) {
   return (
     <Routes>
       <Route path="/" element={<Navigate to={PATHS.dashboard} replace />} />
-      <Route path={PATTERNS.dashboard} element={<DashboardRoute />} />
+      <Route
+        path={PATTERNS.dashboard}
+        element={<DashboardRoute activeSessionId={props.activeSessionId} />}
+      />
       <Route path={PATTERNS.dial} element={<DialPage {...props} />} />
       <Route path={PATTERNS.crmActivities} element={<ActivitiesRoute />} />
       <Route path={PATTERNS.crmActivity} element={<ActivityDetailRoute />} />
@@ -49,9 +53,10 @@ export function AppRoutes(props: AppRoutesProps) {
 /**
  * Dashboard route — needs three lists to fill its tiles.
  *
+ * @param props the session this browser is running, if any
  * @returns the dashboard, once its data is in
  */
-function DashboardRoute() {
+function DashboardRoute({ activeSessionId }: { activeSessionId: string | null }) {
   const leads = usePoll(api.getLeads, LIST_POLL_MS);
   const sessions = usePoll(api.getSessions, LIST_POLL_MS);
   const activities = usePoll(api.getActivities, LIST_POLL_MS);
@@ -63,6 +68,7 @@ function DashboardRoute() {
           leadCount={leads.data?.length ?? 0}
           sessions={sessionList}
           activities={activities.data ?? []}
+          activeSessionId={activeSessionId}
         />
       )}
     </AsyncView>

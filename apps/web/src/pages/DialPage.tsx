@@ -13,10 +13,10 @@ const POLL_MS = 1500;
 
 /** Props for {@link DialPage}. */
 export interface DialPageProps {
-  /** A session left running, offered for resume. */
-  resumableSessionId: string | null;
+  /** A session this browser started that has not finished, if any. */
+  activeSessionId: string | null;
   onSessionStarted: (sessionId: string) => void;
-  onSessionForgotten: () => void;
+  onSessionFinished: () => void;
 }
 
 /**
@@ -29,9 +29,9 @@ export interface DialPageProps {
  * @returns whichever half of the dialer applies
  */
 export function DialPage({
-  resumableSessionId,
+  activeSessionId,
   onSessionStarted,
-  onSessionForgotten,
+  onSessionFinished,
 }: DialPageProps) {
   const toasts = useToast();
   const [params, setParams] = useSearchParams();
@@ -39,10 +39,24 @@ export function DialPage({
   const [busy, setBusy] = useState(false);
 
   const leads = usePoll(api.getLeads, 10_000, sessionId === null);
+
+  // Polling stops the moment the session reports STOPPED. Nothing about a
+  // finished session can change again, so continuing would be a request every
+  // 1.5s forever — and on a free tier that is the difference between an idle
+  // tab and one that never lets the server sleep.
+  //
+  // `finished` starts false so a session opened cold still gets its first
+  // fetch; the data it returns is what turns polling off.
+  const [finished, setFinished] = useState(false);
+
+  useEffect(() => {
+    setFinished(false);
+  }, [sessionId]);
+
   const session = usePoll(
     useCallback(() => api.getSessionView(sessionId ?? ''), [sessionId]),
     POLL_MS,
-    sessionId !== null
+    sessionId !== null && !finished
   );
 
   // The dialer stops on its own once the queue drains, and nothing on screen
@@ -55,16 +69,23 @@ export function DialPage({
     if (!view) return;
     const running = view.session.status === 'RUNNING';
 
+    if (!running) {
+      setFinished(true);
+      // The session is over, so this browser no longer has one in progress.
+      // Leaving it behind would offer "resume" on something already finished.
+      onSessionFinished();
+    }
+
     if (wasRunning.current && !running) {
       const { attempted, connected } = view.session.metrics;
       toasts.push(
         'info',
         'Session finished',
-        `${String(attempted)} attempted · ${String(connected)} connected. The queue is empty.`
+        `${String(attempted)} attempted · ${String(connected)} connected. Polling stopped.`
       );
     }
     wasRunning.current = running;
-  }, [view, toasts]);
+  }, [view, toasts, onSessionFinished]);
 
   // A failed CRM write is the only silent failure in the flow: the call still
   // shows its outcome, and nothing else says the record never landed.
@@ -121,11 +142,11 @@ export function DialPage({
             leads={data}
             onStart={start}
             busy={busy}
-            resumableSessionId={resumableSessionId}
+            resumableSessionId={activeSessionId}
             onResume={() => {
-              if (resumableSessionId !== null) setParams({ session: resumableSessionId });
+              if (activeSessionId !== null) setParams({ session: activeSessionId });
             }}
-            onDiscardResumable={onSessionForgotten}
+            onDiscardResumable={onSessionFinished}
           />
         )}
       </AsyncView>
@@ -139,7 +160,7 @@ export function DialPage({
           view={data}
           onStop={stop}
           onReset={() => {
-            onSessionForgotten();
+            onSessionFinished();
             setParams({});
           }}
           busy={busy}
