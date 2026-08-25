@@ -1,11 +1,15 @@
 name: check
 
-# Every PR into main, and main itself after a merge. This gate decides whether
-# code is allowed to become a release candidate — it does not deploy anything.
+# Every PR into main. This gate decides whether code is allowed to become a
+# release candidate — it does not deploy anything.
+#
+# Deliberately not `push: [main]`. Everything reaches main through a PR that
+# already ran this, so re-running on the merge commit only finds something when
+# main moved between the branch being cut and the merge — and release.yml runs
+# the whole gate again on the tagged commit before it deploys, which catches
+# that case anyway, at the point where it would actually cost something.
 on:
   pull_request:
-    branches: [main]
-  push:
     branches: [main]
 
 # A new push to the same PR makes the previous run pointless.
