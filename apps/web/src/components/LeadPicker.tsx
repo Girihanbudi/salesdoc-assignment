@@ -1,5 +1,5 @@
 import type { Lead } from '@salesdoc/shared';
-import { ArrowRight, Phone, X } from 'lucide-react';
+import { ArrowRight, Phone } from 'lucide-react';
 import { useState } from 'react';
 import { Button } from '@/components/ui/button.js';
 import { Card } from '@/components/ui/card.js';
@@ -11,10 +11,9 @@ export interface LeadPickerProps {
   /** Called with the selected lead ids, in table order. */
   onStart: (leadIds: string[]) => void;
   busy: boolean;
-  /** A session that was left running, if there is one. */
+  /** A session the server says is still running, if there is one. */
   resumableSessionId: string | null;
   onResume: () => void;
-  onDiscardResumable: () => void;
 }
 
 /**
@@ -29,7 +28,6 @@ export function LeadPicker({
   busy,
   resumableSessionId,
   onResume,
-  onDiscardResumable,
 }: LeadPickerProps) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
 
@@ -55,16 +53,13 @@ export function LeadPicker({
               <code className="rounded bg-bg px-1 py-0.5 text-xs">{resumableSessionId}</code>
             </p>
           </div>
-          <div className="flex items-center gap-2">
-            <Button variant="ghost" size="sm" onClick={onDiscardResumable}>
-              <X className="size-4" aria-hidden />
-              Dismiss
-            </Button>
-            <Button size="sm" onClick={onResume}>
-              Go to active session
-              <ArrowRight className="size-4" aria-hidden />
-            </Button>
-          </div>
+          {/* No dismiss: the session really is running on the server, and
+              hiding the way back to it would not make that less true. It
+              disappears when the session ends. */}
+          <Button onClick={onResume}>
+            Go to active session
+            <ArrowRight className="size-4" aria-hidden />
+          </Button>
         </Card>
       )}
 

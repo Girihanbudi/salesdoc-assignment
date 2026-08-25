@@ -106,8 +106,7 @@ function AppFrame() {
       >
         <AppRoutes
           activeSessionId={activeSession.sessionId}
-          onSessionStarted={activeSession.remember}
-          onSessionFinished={activeSession.forget}
+          onSessionChanged={activeSession.refresh}
         />
       </Shell>
 

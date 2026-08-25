@@ -158,3 +158,18 @@ export const detail = (ctx: AppContext) =>
       activities: ctx.activities.findByCallIds(calls.map((line) => line.call.id)),
     };
   });
+
+/**
+ * The session this agent has running, or null.
+ *
+ * The client asks on load rather than remembering across reloads: the server
+ * is the only thing that knows whether a session is still going, and an id
+ * kept in the browser goes stale the moment the process restarts.
+ *
+ * @param ctx the app context
+ * @returns a handler resolving to the running session, or null
+ */
+export const active =
+  (ctx: AppContext) =>
+  (): DialerSession | null =>
+    ctx.sessions.findRunningByAgent(ctx.agents.findCurrent().id) ?? null;

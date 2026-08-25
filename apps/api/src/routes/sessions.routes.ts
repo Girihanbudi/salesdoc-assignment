@@ -26,6 +26,15 @@ export function sessionRoutes(app: FastifyInstance, ctx: AppContext): void {
     handler: sessionsHandler.list(ctx),
   });
 
+  // Before the `:id` routes: a static segment must not be swallowed by a
+  // parameter that would happily match the word "active".
+  app.route({
+    method: 'GET',
+    url: '/api/sessions/active',
+    schema: { tags: ['sessions'], summary: "The agent's running session, or null" },
+    handler: sessionsHandler.active(ctx),
+  });
+
   app.route<{ Params: { id: string } }>({
     method: 'GET',
     url: '/api/sessions/:id/detail',

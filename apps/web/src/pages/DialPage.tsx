@@ -6,17 +6,17 @@ import { Dashboard } from '@/components/Dashboard.js';
 import { LeadPicker } from '@/components/LeadPicker.js';
 import { usePoll } from '@/hooks/usePoll.js';
 import { useToast } from '@/hooks/useToasts.js';
-import { toUserMessage } from '@/lib/fetcher.js';
+import { toUserMessage } from '@/constant/error-messages.js';
 
 /** How often the live dashboard refreshes. The brief asks for 1-2s. */
 const POLL_MS = 1500;
 
 /** Props for {@link DialPage}. */
 export interface DialPageProps {
-  /** A session this browser started that has not finished, if any. */
+  /** The session the server says is running, if any. */
   activeSessionId: string | null;
-  onSessionStarted: (sessionId: string) => void;
-  onSessionFinished: () => void;
+  /** Re-asks the server after this page starts or ends a session. */
+  onSessionChanged: () => void;
 }
 
 /**
@@ -28,11 +28,7 @@ export interface DialPageProps {
  * @param props resume plumbing
  * @returns whichever half of the dialer applies
  */
-export function DialPage({
-  activeSessionId,
-  onSessionStarted,
-  onSessionFinished,
-}: DialPageProps) {
+export function DialPage({ activeSessionId, onSessionChanged }: DialPageProps) {
   const toasts = useToast();
   const [params, setParams] = useSearchParams();
   const sessionId = params.get('session');
@@ -71,9 +67,9 @@ export function DialPage({
 
     if (!running) {
       setFinished(true);
-      // The session is over, so this browser no longer has one in progress.
-      // Leaving it behind would offer "resume" on something already finished.
-      onSessionFinished();
+      // The server no longer has a running session, so anything showing one —
+      // the resume banner, the dashboard card — needs to hear about it.
+      onSessionChanged();
     }
 
     if (wasRunning.current && !running) {
@@ -93,7 +89,7 @@ export function DialPage({
       );
     }
     wasRunning.current = running;
-  }, [view, toasts, onSessionFinished]);
+  }, [view, toasts, onSessionChanged]);
 
   // A failed CRM write is the only silent failure in the flow: the call still
   // shows its outcome, and nothing else says the record never landed.
@@ -118,7 +114,7 @@ export function DialPage({
     try {
       const created = await api.createSession(leadIds);
       await api.startSession(created.id);
-      onSessionStarted(created.id);
+      onSessionChanged();
       setParams({ session: created.id });
       toasts.push('success', `Dialing ${String(leadIds.length)} leads`, 'Two lines at a time.');
     } catch (cause) {
@@ -134,6 +130,7 @@ export function DialPage({
     try {
       await api.stopSession(sessionId);
       session.refresh();
+      onSessionChanged();
       toasts.push('warning', 'Session stopped', 'Any calls still ringing were cancelled.');
     } catch (cause) {
       report(cause, 'Could not stop the session');
@@ -154,7 +151,6 @@ export function DialPage({
             onResume={() => {
               if (activeSessionId !== null) setParams({ session: activeSessionId });
             }}
-            onDiscardResumable={onSessionFinished}
           />
         )}
       </AsyncView>
@@ -168,7 +164,6 @@ export function DialPage({
           view={data}
           onStop={stop}
           onReset={() => {
-            onSessionFinished();
             setParams({});
           }}
           busy={busy}

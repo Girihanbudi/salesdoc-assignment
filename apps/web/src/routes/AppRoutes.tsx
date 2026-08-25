@@ -20,8 +20,8 @@ const LIST_POLL_MS = 5000;
 export interface AppRoutesProps {
   /** A session this browser started that has not finished, if any. */
   activeSessionId: string | null;
-  onSessionStarted: (sessionId: string) => void;
-  onSessionFinished: () => void;
+  /** Re-asks the server which session is running. */
+  onSessionChanged: () => void;
 }
 
 /**

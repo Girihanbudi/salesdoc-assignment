@@ -1,7 +1,7 @@
 import { useEffect, type ReactNode } from 'react';
 import { Button } from '@/components/ui/button.js';
 import { useToast } from '@/hooks/useToasts.js';
-import { toUserMessage } from '@/lib/fetcher.js';
+import { toUserMessage } from '@/constant/error-messages.js';
 
 /** What a polled or fetched resource currently knows. */
 export interface AsyncState<T> {

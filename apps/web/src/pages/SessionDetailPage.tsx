@@ -1,6 +1,7 @@
 import type { SessionDetail } from '@salesdoc/shared';
 import { ChevronRight } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { CallDurations } from '@/components/CallDurations.js';
 import { StatusBadge } from '@/components/ui/badge.js';
 import { Card, CardLabel } from '@/components/ui/card.js';
 import { durationSeconds, time } from '@/lib/format.js';
@@ -47,6 +48,8 @@ export function SessionDetailPage({ detail }: SessionDetailPageProps) {
           ))}
         </div>
       </Card>
+
+      <CallDurations calls={calls} winnerCallId={session.winnerCallId} />
 
       <Card className="overflow-hidden">
         <div className="border-b border-line px-5 py-5 sm:px-7">

@@ -72,6 +72,7 @@ function stubApi(overrides: Record<string, unknown> = {}) {
     for (const [fragment, payload] of Object.entries(overrides)) {
       if (url.includes(fragment)) return Promise.resolve(enveloped(payload));
     }
+    if (url.includes('/api/sessions/active')) return Promise.resolve(enveloped(null));
     if (url.includes('/api/leads')) return Promise.resolve(enveloped(LEADS));
     if (url.includes('/api/sessions/')) return Promise.resolve(enveloped(SESSION_VIEW));
     return Promise.resolve(enveloped([]));
@@ -95,7 +96,6 @@ beforeEach(() => {
 afterEach(() => {
   vi.unstubAllGlobals();
   window.history.pushState({}, '', '/');
-  window.localStorage.clear();
 });
 
 describe('routing', () => {
@@ -205,8 +205,14 @@ describe('session in the URL', () => {
     expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
   });
 
-  it('offers a way back into a session left running', async () => {
-    window.localStorage.setItem('salesdoc:active-session', 'session-abc');
+  it('offers a way back into a session the server says is running', async () => {
+    // Asked of the server, not remembered in the browser: an id kept locally
+    // goes stale the moment the process restarts, and this app's state is in
+    // memory, so that is every deploy.
+    vi.stubGlobal(
+      'fetch',
+      stubApi({ '/api/sessions/active': { ...SESSION_VIEW.session, status: 'RUNNING' } })
+    );
     renderAt('/dial');
 
     expect(await screen.findByText(/session in progress/i)).toBeInTheDocument();
@@ -237,6 +243,34 @@ describe('polling lifecycle', () => {
     // be a request every 1.5s forever — and on a free tier that keeps the
     // server awake for no reason.
     const fetchMock = vi.fn((url: string) => {
+      if (url.includes('/api/sessions/active')) return Promise.resolve(enveloped(null));
+      if (url.includes('/api/sessions/')) {
+        return Promise.resolve(enveloped(sessionWith('STOPPED')));
+      }
+      return Promise.resolve(enveloped(LEADS));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderAt('/dial?session=session-abc');
+    await screen.findByText(/line 1/i);
+    await new Promise((resolve) => setTimeout(resolve, 500));
+
+    const viewCalls = () =>
+      fetchMock.mock.calls.filter(
+        (c) => String(c[0]).includes('/api/sessions/') && !String(c[0]).includes('active')
+      ).length;
+
+    const before = viewCalls();
+    await new Promise((resolve) => setTimeout(resolve, 3500));
+
+    expect(viewCalls()).toBe(before);
+  });
+
+  it('re-asks the server once a session finishes', async () => {
+    // Nothing is remembered locally, so the only way the resume banner and the
+    // dashboard card learn the session ended is by asking again.
+    const fetchMock = vi.fn((url: string) => {
+      if (url.includes('/api/sessions/active')) return Promise.resolve(enveloped(null));
       if (url.includes('/api/sessions/')) {
         return Promise.resolve(enveloped(sessionWith('STOPPED')));
       }
@@ -247,29 +281,11 @@ describe('polling lifecycle', () => {
     renderAt('/dial?session=session-abc');
     await screen.findByText(/line 1/i);
 
-    const callsAfterLoad = fetchMock.mock.calls.length;
-    await new Promise((resolve) => setTimeout(resolve, 3500));
-
-    expect(fetchMock.mock.calls.length).toBe(callsAfterLoad);
-  });
-
-  it('forgets a finished session, so it is not offered for resume', async () => {
-    window.localStorage.setItem('salesdoc:active-session', 'session-abc');
-    vi.stubGlobal(
-      'fetch',
-      vi.fn((url: string) => {
-        if (url.includes('/api/sessions/')) {
-          return Promise.resolve(enveloped(sessionWith('STOPPED')));
-        }
-        return Promise.resolve(enveloped(LEADS));
-      })
-    );
-
-    renderAt('/dial?session=session-abc');
-    await screen.findByText(/line 1/i);
-
     await waitFor(() => {
-      expect(window.localStorage.getItem('salesdoc:active-session')).toBeNull();
+      const activeCalls = fetchMock.mock.calls.filter((c) =>
+        String(c[0]).includes('/api/sessions/active')
+      );
+      expect(activeCalls.length).toBeGreaterThan(1);
     });
   });
 

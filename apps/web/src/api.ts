@@ -18,13 +18,13 @@ import {
   type SessionView,
 } from '@salesdoc/shared';
 import { z } from 'zod';
-import { rawRequest, request } from '@/lib/fetcher.js';
+import { rawRequest, request } from '@/lib/http.js';
 
 /**
  * Every endpoint the client calls, and nothing else.
  *
  * Transport, envelope unwrapping, and error translation live in
- * `lib/fetcher.ts`; this file is only the list of URLs and their shapes.
+ * `lib/http.ts`; this file is only the list of URLs and their shapes.
  */
 
 /**
@@ -164,4 +164,16 @@ export function getActivityDetail(callId: string): Promise<ActivityDetail> {
  */
 export function getAgent(): Promise<Agent> {
   return request(AgentSchema, '/api/me');
+}
+
+/**
+ * The session this agent has running, if any.
+ *
+ * Asked on load rather than remembered in the browser: the server is the only
+ * thing that knows whether a session is still going.
+ *
+ * @returns the running session, or null
+ */
+export function getActiveSession(): Promise<DialerSession | null> {
+  return request(DialerSessionSchema.nullable(), '/api/sessions/active');
 }
