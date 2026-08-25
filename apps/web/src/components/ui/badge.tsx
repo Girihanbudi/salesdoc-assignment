@@ -7,7 +7,7 @@ import { cn } from '@/lib/utils.js';
  * Every entry carries a text label as well as a colour: colour alone must
  * never be the only signal for state.
  */
-const CALL_STATUS_STYLES: Record<CallStatus, { label: string; className: string }> = {
+export const CALL_STATUS_STYLES: Record<CallStatus, { label: string; className: string }> = {
   DIALING: { label: 'Dialing', className: 'bg-ink/5 text-ink' },
   CONNECTED: { label: 'Connected', className: 'bg-accent text-accent-ink' },
   NO_ANSWER: { label: 'No answer', className: 'bg-ink/5 text-muted' },

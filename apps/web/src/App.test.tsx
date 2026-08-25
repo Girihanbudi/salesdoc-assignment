@@ -39,6 +39,25 @@ function enveloped(data: unknown): Response {
   );
 }
 
+/** Minimal session payload — enough for the dashboard to render. */
+const SESSION_VIEW = {
+  session: {
+    id: 'session-abc',
+    agentId: 'agent-1',
+    leadQueue: [],
+    concurrency: 2,
+    activeCallIds: [],
+    winnerCallId: null,
+    status: 'STOPPED',
+    metrics: { attempted: 0, connected: 0, failed: 0, canceled: 0 },
+  },
+  lines: [],
+  winner: null,
+  history: [],
+  upNext: [],
+  activities: [],
+};
+
 beforeEach(() => {
   vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(enveloped(LEADS))));
 });
@@ -112,5 +131,45 @@ describe('error handling', () => {
     await user.click(screen.getByRole('button', { name: /dismiss/i }));
 
     await waitFor(() => expect(toast).not.toBeInTheDocument());
+  });
+});
+
+describe('session in the URL', () => {
+  afterEach(() => {
+    window.history.pushState({}, '', '/');
+    window.localStorage.clear();
+  });
+
+  it('goes straight to the session named in the query string', async () => {
+    // A refresh mid-session must not dump the agent back to the lead picker
+    // while calls are still running behind them.
+    window.history.pushState({}, '', '/?session=session-abc');
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string) => {
+        if (url.includes('/api/sessions/')) return Promise.resolve(enveloped(SESSION_VIEW));
+        return Promise.resolve(enveloped(LEADS));
+      })
+    );
+
+    render(<App />);
+
+    expect(await screen.findByText('Dialer session')).toBeInTheDocument();
+    expect(screen.queryByText('Start a dialer session')).not.toBeInTheDocument();
+  });
+
+  it('offers a way back into a session left running', async () => {
+    window.localStorage.setItem('salesdoc:last-session', 'session-abc');
+    render(<App />);
+
+    expect(await screen.findByText(/session in progress/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /go to active session/i })).toBeInTheDocument();
+  });
+
+  it('does not offer resume when there is no earlier session', async () => {
+    render(<App />);
+
+    await screen.findByText('Amara Osei');
+    expect(screen.queryByText(/session in progress/i)).not.toBeInTheDocument();
   });
 });

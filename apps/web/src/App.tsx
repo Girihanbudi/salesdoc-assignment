@@ -9,12 +9,22 @@ import { Button } from '@/components/ui/button.js';
 import { Snackbar } from '@/components/ui/snackbar.js';
 import { usePoll } from '@/hooks/usePoll.js';
 import { useToasts } from '@/hooks/useToasts.js';
+import { useUrlState } from '@/hooks/useUrlState.js';
 import { toUserMessage } from '@/lib/fetcher.js';
 
 /** How often the dashboard refreshes. The brief asks for 1-2s. */
 const POLL_MS = 1500;
 /** The CRM screen is not live-critical, so it polls lazily. */
 const CRM_POLL_MS = 4000;
+
+/**
+ * Where the last session id is remembered.
+ *
+ * The URL owns the current screen, but once you leave a session the id is gone
+ * from it — so this is what lets the picker offer "resume" instead of stranding
+ * a running session with no way back.
+ */
+const LAST_SESSION_KEY = 'salesdoc:last-session';
 
 /**
  * Root component.
@@ -25,10 +35,43 @@ const CRM_POLL_MS = 4000;
  * from `toUserMessage`, so no screen invents its own wording.
  */
 export function App() {
-  const [view, setView] = useState<View>('dialer');
-  const [sessionId, setSessionId] = useState<string | null>(null);
+  // The URL is the source of truth for which screen you are on. A refresh
+  // mid-session used to dump the agent back to the lead picker while calls
+  // were still running behind them.
+  const [params, setUrl] = useUrlState();
+  const view: View = params['view'] === 'crm' ? 'crm' : 'dialer';
+  const sessionId = params['session'] ?? null;
+
   const [busy, setBusy] = useState(false);
   const { toasts, push, dismiss } = useToasts();
+
+  const setView = (next: View): void => {
+    setUrl({ view: next === 'dialer' ? null : next });
+  };
+
+  const [resumable, setResumable] = useState<string | null>(() => readLastSession());
+
+  // Remember the session we are in, so leaving it still leaves a way back.
+  useEffect(() => {
+    if (sessionId === null) return;
+    setResumable(sessionId);
+    try {
+      window.localStorage.setItem(LAST_SESSION_KEY, sessionId);
+    } catch {
+      // Private mode or blocked storage. Resume is a convenience, not a
+      // requirement — the app works without it.
+    }
+  }, [sessionId]);
+
+  /** Forgets the remembered session, e.g. once the server says it is gone. */
+  const forgetResumable = useCallback(() => {
+    setResumable(null);
+    try {
+      window.localStorage.removeItem(LAST_SESSION_KEY);
+    } catch {
+      /* see above */
+    }
+  }, []);
 
   const onDialer = view === 'dialer';
 
@@ -40,6 +83,13 @@ export function App() {
   );
   const contacts = usePoll(api.getCrmContacts, CRM_POLL_MS, view === 'crm');
   const activities = usePoll(api.getCrmActivities, CRM_POLL_MS, view === 'crm');
+
+  // A restart wipes in-memory sessions, so a remembered id can point at
+  // nothing. Drop it rather than offering a button that 404s.
+  useEffect(() => {
+    if (sessionId !== null && session.error !== null) forgetResumable();
+  }, [sessionId, session.error, forgetResumable]);
+
 
   /**
    * Reports a thrown value as a snackbar.
@@ -74,7 +124,7 @@ export function App() {
     try {
       const created = await api.createSession(leadIds);
       await api.startSession(created.id);
-      setSessionId(created.id);
+      setUrl({ session: created.id });
       push('success', `Dialing ${String(leadIds.length)} leads`, 'Two lines at a time.');
     } catch (cause) {
       report(cause, 'Could not start the session');
@@ -138,7 +188,18 @@ export function App() {
           </Screen>
         ) : sessionId === null ? (
           <Screen state={leads} empty="No leads available.">
-            {(data) => <LeadPicker leads={data} onStart={start} busy={busy} />}
+            {(data) => (
+              <LeadPicker
+                leads={data}
+                onStart={start}
+                busy={busy}
+                resumableSessionId={resumable}
+                onResume={() => {
+                  if (resumable !== null) setUrl({ session: resumable });
+                }}
+                onDiscardResumable={forgetResumable}
+              />
+            )}
           </Screen>
         ) : (
           <Screen state={session} empty="Session not found.">
@@ -147,7 +208,10 @@ export function App() {
                 view={data}
                 onEndCall={endCall}
                 onStop={stop}
-                onReset={() => setSessionId(null)}
+                onReset={() => {
+                  forgetResumable();
+                  setUrl({ session: null });
+                }}
                 busy={busy}
               />
             )}
@@ -202,4 +266,17 @@ function Screen<T>({
   }
 
   return <>{children(state.data)}</>;
+}
+
+/**
+ * Reads the remembered session id.
+ *
+ * @returns the id, or null when there is none or storage is unavailable
+ */
+function readLastSession(): string | null {
+  try {
+    return window.localStorage.getItem(LAST_SESSION_KEY);
+  } catch {
+    return null;
+  }
 }

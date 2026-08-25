@@ -2,7 +2,7 @@ import type { Disposition, LineView, SessionView } from '@salesdoc/shared';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { PhoneOff, PhoneCall, Users } from 'lucide-react';
 import { useState } from 'react';
-import { CrmSyncBadge, StatusBadge } from '@/components/ui/badge.js';
+import { CALL_STATUS_STYLES, CrmSyncBadge, StatusBadge } from '@/components/ui/badge.js';
 import { Button } from '@/components/ui/button.js';
 import { Card, CardLabel } from '@/components/ui/card.js';
 import { cn } from '@/lib/utils.js';
@@ -70,7 +70,7 @@ export function Dashboard({ view, onEndCall, onStop, onReset, busy }: DashboardP
           )}
         </AnimatePresence>
 
-        <ActivityFeed activities={activities} />
+        <ActivityFeed activities={activities} history={history} />
 
         <div className="flex gap-3">
           {session.status === 'RUNNING' ? (
@@ -172,7 +172,11 @@ function LineCard({ index, line }: { index: number; line: LineView | null }) {
 }
 
 /**
- * Bar-per-attempt timeline. The winner's bar is the only lime one.
+ * One bar per attempt, scaled by how long the call lasted.
+ *
+ * Duration is the only real quantity a mocked call produces, so it is what the
+ * chart shows. Height alone would be ambiguous, so colour encodes the outcome
+ * and every bar carries a text tooltip.
  *
  * @param props every call in the session plus the current winner
  * @returns the timeline card
@@ -184,37 +188,96 @@ function AttemptTimeline({
   history: LineView[];
   winnerCallId: string | null;
 }) {
-  const bars = [...history].reverse();
+  // history is newest-first; a timeline reads oldest-first.
+  const bars = [...history].reverse().map((line) => ({
+    line,
+    seconds: durationSeconds(line.call),
+  }));
+
+  const longest = Math.max(...bars.map((b) => b.seconds), 1);
 
   return (
     <Card className="p-7">
-      <CardLabel>Attempts</CardLabel>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <CardLabel>Call durations</CardLabel>
+          <p className="mt-1 text-sm text-muted">
+            How long each attempt lasted, oldest first.
+          </p>
+        </div>
+        <Legend />
+      </div>
+
       {bars.length === 0 ? (
-        <p className="mt-6 text-sm text-muted">No calls placed yet.</p>
+        <p className="mt-8 text-sm text-muted">No calls placed yet.</p>
       ) : (
-        <ul className="mt-6 flex h-28 items-end gap-2">
-          {bars.map((line) => {
-            const isWinner = line.call.id === winnerCallId;
-            const connected = line.call.status === 'CONNECTED';
-            return (
-              <li
-                key={line.call.id}
-                className="group relative flex-1"
-                title={`${line.lead.name} — ${line.call.status}`}
-              >
-                <div
-                  className={cn(
-                    'w-full rounded-t-lg transition-colors',
-                    isWinner || connected ? 'bg-accent' : 'bg-ink/10'
-                  )}
-                  style={{ height: connected ? '100%' : '55%' }}
-                />
-              </li>
-            );
-          })}
+        <ul className="mt-6 flex h-32 items-end gap-2">
+          {bars.map(({ line, seconds }) => (
+            <li key={line.call.id} className="flex h-full flex-1 flex-col justify-end gap-2">
+              <span
+                className={cn(
+                  'w-full rounded-t-lg transition-[height] duration-500',
+                  barTone(line.call.status, line.call.id === winnerCallId)
+                )}
+                // A floor of 8% keeps a very short call visible rather than
+                // rendering as nothing.
+                style={{ height: `${String(Math.max(8, (seconds / longest) * 100))}%` }}
+                title={`${line.lead.name} — ${CALL_STATUS_STYLES[line.call.status].label} — ${String(seconds)}s`}
+              />
+              <span className="tnum text-center text-[10px] text-muted">
+                {seconds}s
+              </span>
+            </li>
+          ))}
         </ul>
       )}
     </Card>
+  );
+}
+
+/**
+ * How long a call ran, in whole seconds.
+ *
+ * @param call the call to measure
+ * @returns seconds elapsed, or 0 while it is still ringing
+ */
+function durationSeconds(call: LineView['call']): number {
+  if (call.endedAt === null) return 0;
+  const ms = Date.parse(call.endedAt) - Date.parse(call.startedAt);
+  return Math.max(0, Math.round(ms / 1000));
+}
+
+/**
+ * Bar colour for an outcome.
+ *
+ * @param status the call's status
+ * @param isWinner whether this call currently holds the agent
+ * @returns the tailwind classes for the bar
+ */
+function barTone(status: LineView['call']['status'], isWinner: boolean): string {
+  if (status === 'CONNECTED' || isWinner) return 'bg-accent';
+  if (status === 'CANCELED_BY_DIALER') return 'bg-ink/25';
+  if (status === 'DIALING') return 'bg-ink/10 animate-pulse';
+  return 'bg-ink/10';
+}
+
+/** Colour is never the only signal — the legend spells each one out. */
+function Legend() {
+  const items = [
+    { tone: 'bg-accent', label: 'Connected' },
+    { tone: 'bg-ink/25', label: 'Canceled' },
+    { tone: 'bg-ink/10', label: 'No answer / busy / voicemail' },
+  ];
+
+  return (
+    <ul className="flex flex-wrap items-center gap-x-4 gap-y-1">
+      {items.map((item) => (
+        <li key={item.label} className="flex items-center gap-1.5 text-xs text-muted">
+          <span className={cn('size-2 rounded-sm', item.tone)} aria-hidden />
+          {item.label}
+        </li>
+      ))}
+    </ul>
   );
 }
 
@@ -352,8 +415,19 @@ function QueuePreview({
  * @param props the activities from the polled view
  * @returns the feed card
  */
-function ActivityFeed({ activities }: { activities: SessionView['activities'] }) {
+function ActivityFeed({
+  activities,
+  history,
+}: {
+  activities: SessionView['activities'];
+  history: LineView[];
+}) {
   const reduceMotion = useReducedMotion();
+
+  // An activity carries a leadId, not a name. The session's own history is
+  // already hydrated with leads, so resolve against that rather than making
+  // the API send the name twice.
+  const leadNameById = new Map(history.map((line) => [line.lead.id, line.lead.name]));
 
   return (
     <Card className="p-6">
@@ -376,9 +450,12 @@ function ActivityFeed({ activities }: { activities: SessionView['activities'] })
               >
                 <span className="min-w-0">
                   <span className="block truncate text-sm font-medium">
-                    {DISPOSITION_LABELS[activity.disposition]}
+                    {leadNameById.get(activity.leadId) ?? 'Unknown lead'}
                   </span>
-                  <span className="block truncate text-xs text-muted">{activity.notes}</span>
+                  <span className="block truncate text-xs text-muted">
+                    {DISPOSITION_LABELS[activity.disposition]}
+                    {activity.notes ? ` · ${activity.notes}` : ''}
+                  </span>
                 </span>
                 <span className="tnum shrink-0 text-xs text-muted">
                   {new Date(activity.createdAt).toLocaleTimeString([], {

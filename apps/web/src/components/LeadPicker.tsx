@@ -1,5 +1,5 @@
 import type { Lead } from '@salesdoc/shared';
-import { Phone } from 'lucide-react';
+import { ArrowRight, Phone, X } from 'lucide-react';
 import { useState } from 'react';
 import { Button } from '@/components/ui/button.js';
 import { Card } from '@/components/ui/card.js';
@@ -11,6 +11,10 @@ export interface LeadPickerProps {
   /** Called with the selected lead ids, in table order. */
   onStart: (leadIds: string[]) => void;
   busy: boolean;
+  /** A session that was left running, if there is one. */
+  resumableSessionId: string | null;
+  onResume: () => void;
+  onDiscardResumable: () => void;
 }
 
 /**
@@ -19,7 +23,14 @@ export interface LeadPickerProps {
  * @param props the leads to show and the start handler
  * @returns the lead table
  */
-export function LeadPicker({ leads, onStart, busy }: LeadPickerProps) {
+export function LeadPicker({
+  leads,
+  onStart,
+  busy,
+  resumableSessionId,
+  onResume,
+  onDiscardResumable,
+}: LeadPickerProps) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
 
   const toggle = (id: string): void => {
@@ -34,7 +45,30 @@ export function LeadPicker({ leads, onStart, busy }: LeadPickerProps) {
   const allSelected = leads.length > 0 && selected.size === leads.length;
 
   return (
-    <Card className="overflow-hidden">
+    <div className="flex flex-col gap-5">
+      {resumableSessionId !== null && (
+        <Card className="flex flex-wrap items-center justify-between gap-4 border border-accent/40 p-5">
+          <div>
+            <p className="font-medium">You have a session in progress</p>
+            <p className="text-sm text-muted">
+              Calls keep running while you are away.{' '}
+              <code className="rounded bg-bg px-1 py-0.5 text-xs">{resumableSessionId}</code>
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button variant="ghost" size="sm" onClick={onDiscardResumable}>
+              <X className="size-4" aria-hidden />
+              Dismiss
+            </Button>
+            <Button size="sm" onClick={onResume}>
+              Go to active session
+              <ArrowRight className="size-4" aria-hidden />
+            </Button>
+          </div>
+        </Card>
+      )}
+
+      <Card className="overflow-hidden">
       <div className="flex items-center justify-between border-b border-line px-7 py-5">
         <div>
           <h2 className="text-lg font-semibold">Leads</h2>
@@ -121,6 +155,7 @@ export function LeadPicker({ leads, onStart, busy }: LeadPickerProps) {
           {busy ? 'Starting…' : 'Create session & start'}
         </Button>
       </div>
-    </Card>
+      </Card>
+    </div>
   );
 }
