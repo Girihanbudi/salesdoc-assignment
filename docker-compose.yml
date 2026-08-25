@@ -1,0 +1,35 @@
+# One-command demo: `docker compose up`, then open http://localhost:3000
+#
+# A single service, because the app is a single process — Fastify serves the
+# API and the React build together. There is no database to compose against:
+# state lives in memory and reseeds on boot, which the assignment permits.
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: salesdoc-dialer:latest
+    container_name: salesdoc-dialer
+    ports:
+      - '${PORT:-3000}:3000'
+    environment:
+      NODE_ENV: production
+      # The app reads PORT; inside the container it always listens on 3000 and
+      # the host-side port is remapped above.
+      PORT: 3000
+    healthcheck:
+      # Uses node rather than curl: the alpine image has no curl, and adding one
+      # would grow the image for a check the runtime can already do.
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://127.0.0.1:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped

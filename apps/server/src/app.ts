@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import fastifyStatic from "@fastify/static";
 import Fastify, { type FastifyInstance } from "fastify";
 import {
   CreateSessionBodySchema,
@@ -16,12 +17,17 @@ import { createSession, createStore, type Store } from "./store.js";
 const CRM_LATENCY_MIN_MS = 300;
 const CRM_LATENCY_MAX_MS = 800;
 
+/** Prefixes owned by the API. Anything else is a client-side route. */
+const API_PREFIXES = ['/api', '/mock-crm', '/leads', '/docs'];
+
 /** Options for {@link buildApp}, all defaulted for production. */
 export interface BuildAppOptions {
   store?: Store;
   logger?: boolean;
   /** Serve the Swagger explorer at `/docs`. Off in tests — it is slow to boot. */
   docs?: boolean;
+  /** Absolute path to the built frontend. Omit to run API-only, as tests do. */
+  webRoot?: string;
 }
 
 /**
@@ -41,6 +47,19 @@ export async function buildApp(
 ): Promise<FastifyInstance> {
   const store = options.store ?? createStore();
   const app = Fastify({ logger: options.logger ?? false });
+
+  // Both of these must precede every route below.
+  //
+  // Static first: swagger-ui registers @fastify/static internally, so ours
+  // going in first keeps `reply.sendFile` pointed at the frontend. Registering
+  // static *after the routes* — which is where this used to live, in index.ts —
+  // stopped it serving entirely, and every asset fell through to the SPA
+  // fallback as a 404 carrying index.html, so the page rendered blank.
+  //
+  // Swagger second, but still before the routes, or it documents nothing.
+  if (options.webRoot !== undefined) {
+    await app.register(fastifyStatic, { root: options.webRoot });
+  }
 
   if (options.docs === true) await registerDocs(app);
 
@@ -278,6 +297,20 @@ export async function buildApp(
     { schema: { tags: ["mock-crm"], summary: "The CRM's activities" } },
     () => [...store.crmActivities.values()],
   );
+
+  // Client-side routes fall back to index.html; API routes must still 404 as
+  // JSON. The explicit 200 matters: sendFile inside a notFoundHandler keeps the
+  // 404 status otherwise, which is wrong for a page the app is meant to render.
+  if (options.webRoot !== undefined) {
+    app.setNotFoundHandler((request, reply) => {
+      const isApi = API_PREFIXES.some((prefix) => request.url.startsWith(prefix));
+      return isApi
+        ? reply
+            .code(404)
+            .send({ error: { code: "NOT_FOUND", message: "No such route" } })
+        : reply.code(200).type("text/html").sendFile("index.html");
+    });
+  }
 
   return app;
 }

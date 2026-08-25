@@ -60,13 +60,88 @@ select leads → create session → START
 Every terminal call syncs to the CRM exactly once. The idempotency key is the
 `callId`, so a replayed terminal event cannot create a duplicate activity.
 
-## Layout
+## Architecture
+
+### Shape
+
+Three npm workspaces. `shared` is the contract; neither app talks to the other
+except through it.
+
+```
+packages/shared          zod schemas -> the single source of truth for types
+        │                (server validates with them, client infers from them)
+        ├──────────────┐
+        ▼              ▼
+apps/server        apps/web
+  index.ts           App.tsx ──── usePoll(1.5s) ──┐
+  app.ts   ◄─────────────────────────────────────┘
+  dialer.ts   the state machine
+  crm.ts      idempotent write-behind
+  store.ts    in-memory Maps
+```
+
+In production there is **one process on one port**: Fastify serves the API *and*
+`apps/web/dist`. Same-origin in dev too (Vite proxies `/api` to `:3000`), so
+`fetch('/api/leads')` is identical in both and there is no CORS and no base-URL
+env var to get wrong.
+
+### Layers
+
+| Layer | File | Responsibility |
+|---|---|---|
+| HTTP | `app.ts` | parse → call engine → map to response. No business logic. |
+| Engine | `dialer.ts` | the state machine: lines, winner election, retries |
+| Integration | `crm.ts` | contact upsert + idempotent activity write |
+| Persistence | `store.ts` | in-memory `Map`s, seeded on boot |
+| Contract | `shared/schemas.ts` | models + request/response shapes |
+
+`app.ts` is deliberately thin — it never decides anything about calls. That is
+why the engine can be tested without HTTP, and the routes tested without timers.
+
+### The one design decision worth knowing
+
+Everything nondeterministic is **injected**, not imported:
+
+```ts
+createDialer({ store, now, id, random, schedule, crm })
+```
+
+Production passes `Date.now`, `randomUUID`, `Math.random`, and `setTimeout`.
+Tests pass a fake clock, a counter, a scripted random sequence, and a manual
+timer queue — so "line 1 connects, line 2 is cancelled" is asserted exactly,
+with no sleeping and no flake. `schedule` returns a *canceller*, which is what
+makes a losing line's pending outcome droppable.
+
+This is the only indirection in the codebase, and it is what makes the tests
+able to fail for the right reason.
+
+### Request flow
+
+```
+POST /api/sessions      -> validate leadIds, build session (STOPPED)
+POST /:id/start         -> fillLines(): dial up to 2, schedule each outcome
+   ...outcome fires     -> CONNECTED? claim winner, cancel the other line
+                           otherwise: count it, free the line, refill
+   ...terminal          -> syncToCrm(): guard on callId, upsert contact,
+                           write activity to BOTH stores
+GET  /api/sessions/:id  <- one hydrated payload; the client joins nothing
+POST /:id/calls/:cid/end-> agent's disposition -> CRM -> resume dialing
+```
+
+**A connected call syncs to the CRM at wrap-up, not on answer.** Syncing on
+answer would claim the `callId` idempotency key against a placeholder
+disposition and silently discard the agent's real one. `stop()` covers the gap
+so a conversation is never lost.
+
+### Layout
 
 | Path | What |
 |---|---|
 | `apps/server/src/dialer.ts` | the state machine — **the interesting file** |
 | `apps/server/src/crm.ts` | mock CRM store + idempotent sync |
 | `apps/server/src/store.ts` | in-memory `Map`s, seeded on boot |
+| `apps/server/src/app.ts` | routes, validation, error envelope |
+| `apps/server/src/test-harness.ts` | fake clock/random/timers for the engine |
 | `apps/web/src/` | React dashboard, polls every 1.5s |
 | `packages/shared/src/schemas.ts` | zod models shared by both sides |
 
@@ -98,8 +173,20 @@ One container, one process, one port — Fastify serves the API *and* the built
 frontend.
 
 ```bash
+docker compose up --build        # http://localhost:3000
+```
+
+That is the whole demo path if you would rather not install Node. The compose
+file defines a single service, because the app is a single process and there is
+no database to compose against. It includes a healthcheck on `/api/health`, so
+`docker compose ps` reports `healthy` rather than merely `running`. Override the
+host port with `PORT=8080 docker compose up`.
+
+Without compose:
+
+```bash
 docker build -t dialer .
-docker run -p 3000:3000 dialer   # http://localhost:3000
+docker run -p 3000:3000 dialer
 ```
 
 Hosted on Render's free tier from `render.yaml`. That tier sleeps after ~15

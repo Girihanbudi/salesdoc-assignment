@@ -26,6 +26,12 @@ who picked up and got hung up on (*abandoned calls*, FCC-capped at 3% in the US)
 **No auth.** Every request is treated as `agent-1`. Session ownership and an
 agent identity would be the first thing added.
 
+**Compose is one service, not a stack.** `docker compose up` exists as the
+one-command demo path for a reviewer who would rather not install Node. There
+is no second service because there is no database — a compose file that starts
+Postgres nothing connects to would be theatre. It gains a real healthcheck so
+`docker compose ps` reports `healthy` rather than just `running`.
+
 **shadcn/ui without Radix.** The seven primitives used here (button, card,
 badge, checkbox, table, textarea) are styled elements with `cva` variants and
 need no portal or focus trap, so they are written in shadcn's idiom — owned
@@ -130,6 +136,24 @@ through `localhost:5173` and watching it proxy to the API.
 
 The lesson: run the exact command the reader will run. A passing test suite says
 nothing about the command in your README.
+
+**The frontend silently stopped being served, and the symptom lied.** Adding
+Swagger broke static file serving: `@fastify/static` was registered in
+`index.ts` *after* every route, so it stopped matching, and each request fell
+through to the SPA fallback. That fallback returned `index.html` — for
+JavaScript and CSS requests too — with a `404` status, because `reply.sendFile`
+inside a `setNotFoundHandler` keeps the 404. So `/api/health` was fine, `/docs`
+was fine, the container reported **healthy**, and the page would have rendered
+blank. Registration moved into `buildApp` ahead of the routes, and the fallback
+now sets an explicit `200`.
+
+Caught by running the container, not by the tests. Five regression tests now
+cover it — root serves HTML, hashed assets are *not* HTML, client routes fall
+back with 200, API routes still 404 as JSON, `/docs` still works. In fairness
+to their limits: I mutation-tested them by swapping the registration order and
+they still passed, because the ordering conflict only manifests when static is
+registered after the routes. They pin the observable outcome, not that specific
+mistake.
 
 **The Docker build caught a bug that every local build hid.** `.dockerignore`
 excluded `dist/` but not `tsconfig.tsbuildinfo`, so the build stage received a

@@ -18,6 +18,7 @@ coverage
 .claude
 docs
 Dockerfile
+docker-compose.yml
 .dockerignore
 *.md
 !README.md
