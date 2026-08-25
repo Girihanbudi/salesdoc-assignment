@@ -1,0 +1,78 @@
+name: release
+
+# Deployment is triggered by a tag, never by a merge. Merging to main means
+# "this is good"; tagging means "ship this", and they are different decisions.
+on:
+  push:
+    tags:
+      - 'v*'
+
+# Two tags pushed close together must not race each other onto the same
+# service — the later deploy could finish first and leave the older build live.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    name: re-run the gate on the tagged commit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # main was green when it merged, but a tag can point anywhere — an older
+      # commit, a branch that never went through a PR. Verify what is actually
+      # being shipped, not what was shipped last time.
+      - name: Quality gate
+        run: node .claude/scripts/check.mjs --full
+
+      - name: Build the image Render will build
+        run: docker build -t salesdoc-dialer:${{ github.ref_name }} .
+
+  deploy:
+    name: deploy to Render
+    needs: verify
+    runs-on: ubuntu-latest
+    # Create this environment in repo Settings and add required reviewers if
+    # you ever want a human to approve a production deploy. Without reviewers
+    # it is transparent, and it gives every deploy a URL in the Actions UI.
+    environment:
+      name: production
+      url: https://salesdoc-assignment.onrender.com
+    steps:
+      - name: Trigger the Render deploy
+        env:
+          DEPLOY_HOOK: ${{ secrets.RENDER_DEPLOY_HOOK }}
+        run: |
+          if [ -z "$DEPLOY_HOOK" ]; then
+            echo "::error::RENDER_DEPLOY_HOOK is not set. Add it in Settings -> Secrets -> Actions."
+            exit 1
+          fi
+          # ref pins the deploy to the tagged commit. Without it Render builds
+          # whatever main currently points at, so a tag cut yesterday would
+          # ship today's main — the opposite of what a release tag means.
+          curl -fsS --retry 3 --retry-delay 5 \
+            "$DEPLOY_HOOK&ref=${{ github.sha }}" \
+            -o response.json
+          cat response.json
+
+      - name: Wait for the new build to answer
+        run: |
+          # Render returns as soon as the deploy is queued, so a green job
+          # would otherwise mean "asked nicely", not "it is live".
+          for i in $(seq 1 60); do
+            if curl -fsS -m 20 https://salesdoc-assignment.onrender.com/api/health > /dev/null; then
+              echo "healthy after $((i * 10))s"
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "::error::Service did not become healthy within 10 minutes."
+          exit 1

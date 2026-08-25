@@ -6,10 +6,15 @@ services:
     plan: free
     region: singapore
     healthCheckPath: /api/health
-    # On until CI exists. Once the workflow on the ci branch lands, turn this
-    # off and let it fire the deploy hook instead — otherwise Render deploys
-    # every push in parallel with the gate, and the gate decides nothing.
-    autoDeploy: true
+    # Off: releases are cut by tagging, and .github/workflows/release.yml fires
+    # the deploy hook after re-running the gate on the tagged commit. Leaving
+    # this on would deploy every merge to main, which makes the tag meaningless
+    # and the gate decorative.
+    #
+    # This service was created through the dashboard, so Render ignores this
+    # file — the same setting has to be turned off under
+    # Settings -> Build & Deploy -> Auto-Deploy.
+    autoDeploy: false
     envVars:
       - key: NODE_ENV
         value: production

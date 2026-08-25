@@ -236,6 +236,40 @@ docker build -t dialer .
 docker run -p 3000:3000 dialer
 ```
 
+### Releasing
+
+Merging to `main` means "this is good". Tagging means "ship this". They are
+separate decisions, so they have separate triggers.
+
+```
+branch off main  ->  PR to main  ->  merge  ->  tag vX.Y.Z  ->  deploy
+                     └ check.yml            └ release.yml ┘
+```
+
+| Workflow | Fires on | Does |
+|---|---|---|
+| `check.yml` | PR to `main`, push to `main` | lint, typecheck, tests, and builds + boots the Docker image |
+| `release.yml` | tag matching `v*` | re-runs the whole gate on the tagged commit, then deploys |
+
+Cutting a release:
+
+```bash
+git tag v1.0.0 && git push origin v1.0.0
+```
+
+Three things worth knowing:
+
+- **The deploy is pinned to the tagged commit** (`&ref=<sha>`). Without that,
+  Render would build whatever `main` points at now, so a tag cut yesterday
+  would ship today's `main` — the opposite of what a tag means.
+- **The gate runs again at release time.** `main` was green when it merged, but
+  a tag can point at any commit, including one that never went through a PR.
+- **Render's own auto-deploy must be off** — Settings → Build & Deploy →
+  Auto-Deploy. Otherwise every merge deploys and the tag decides nothing.
+
+Setup, once: create a Deploy Hook under Settings → Deploy Hook, and add it as
+the repository secret `RENDER_DEPLOY_HOOK`.
+
 Hosted on Render's free tier from `render.yaml`. That tier sleeps after ~15
 minutes idle, so a cold first request takes ~30–50s and in-memory state resets.
 See [NOTES.md](./NOTES.md).
