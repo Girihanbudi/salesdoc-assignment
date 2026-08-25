@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { CONCURRENCY } from '@salesdoc/shared';
-import { createHarness, ROLL } from './test-harness.js';
+import { createHarness, ROLL } from '../test/harness.js';
 
 const SIX_LEADS = ['lead-1', 'lead-2', 'lead-3', 'lead-4', 'lead-5', 'lead-6'];
 
@@ -8,7 +8,7 @@ describe('winner election', () => {
   it('gives the agent the first call to connect and cancels the other line', () => {
     // 2 rings, then line 1 connects.
     const h = createHarness(['lead-1', 'lead-2'], [ROLL.ring, ROLL.ring, ROLL.connected]);
-    h.dialer.start(h.sessionId);
+    h.ctx.dialer.start(h.sessionId);
 
     const [firstId, secondId] = h.store.sessions.get(h.sessionId)!.activeCallIds;
     h.tick(); // resolve line 1
@@ -20,7 +20,7 @@ describe('winner election', () => {
 
   it('does not dial while a winner holds the agent', () => {
     const h = createHarness(SIX_LEADS, [ROLL.ring, ROLL.ring, ROLL.connected]);
-    h.dialer.start(h.sessionId);
+    h.ctx.dialer.start(h.sessionId);
     h.tick();
 
     const session = h.store.sessions.get(h.sessionId)!;
@@ -37,11 +37,11 @@ describe('winner election', () => {
       ROLL.ring, // the two lines refilled after wrap-up
       ROLL.ring,
     ]);
-    h.dialer.start(h.sessionId);
+    h.ctx.dialer.start(h.sessionId);
     h.tick();
 
     const winnerId = h.store.sessions.get(h.sessionId)!.winnerCallId!;
-    h.dialer.endCall(h.sessionId, winnerId, {
+    h.ctx.dialer.endCall(h.sessionId, winnerId, {
       disposition: 'INTERESTED',
       notes: 'Wants a demo next week.',
     });
@@ -56,7 +56,7 @@ describe('winner election', () => {
 describe('concurrency', () => {
   it('never runs more than two lines across a long queue', () => {
     const h = createHarness(SIX_LEADS, Array<number>(60).fill(ROLL.noAnswer));
-    h.dialer.start(h.sessionId);
+    h.ctx.dialer.start(h.sessionId);
 
     let guard = 0;
     do {
@@ -71,7 +71,7 @@ describe('concurrency', () => {
 
   it('stops once the queue drains and the last line clears', () => {
     const h = createHarness(SIX_LEADS, Array<number>(60).fill(ROLL.noAnswer));
-    h.dialer.start(h.sessionId);
+    h.ctx.dialer.start(h.sessionId);
     h.drain();
 
     const session = h.store.sessions.get(h.sessionId)!;
@@ -96,7 +96,7 @@ describe('metrics', () => {
       ROLL.ring,
       ROLL.connected,
     ]);
-    h.dialer.start(h.sessionId);
+    h.ctx.dialer.start(h.sessionId);
     h.tick();
     h.tick();
     h.tick();
@@ -118,10 +118,10 @@ describe('metrics', () => {
 describe('stop', () => {
   it('cancels in-flight calls and their pending outcomes never fire', () => {
     const h = createHarness(SIX_LEADS, [ROLL.ring, ROLL.ring]);
-    h.dialer.start(h.sessionId);
+    h.ctx.dialer.start(h.sessionId);
     const active = [...h.store.sessions.get(h.sessionId)!.activeCallIds];
 
-    h.dialer.stop(h.sessionId);
+    h.ctx.dialer.stop(h.sessionId);
     for (const callId of active) {
       expect(h.store.calls.get(callId)?.status).toBe('CANCELED_BY_DIALER');
     }
@@ -137,10 +137,10 @@ describe('stop', () => {
 
   it('still records a connected call that was never wrapped up', () => {
     const h = createHarness(SIX_LEADS, [ROLL.ring, ROLL.ring, ROLL.connected]);
-    h.dialer.start(h.sessionId);
+    h.ctx.dialer.start(h.sessionId);
     h.tick();
 
-    h.dialer.stop(h.sessionId);
+    h.ctx.dialer.stop(h.sessionId);
     h.drain();
 
     const winnerActivity = [...h.store.activities.values()].find(

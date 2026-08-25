@@ -1,6 +1,8 @@
-import type { CrmDeps } from './crm.js';
-import { createDialer, type Dialer } from './dialer.js';
-import { createSession, createStore, type Store } from './store.js';
+import { loadEnv } from '../constant/env.js';
+import { createContainer } from '../container.js';
+import { createStore, type Store } from '../db/store.js';
+import type { AppContext } from '../types/context.js';
+import type { Clock } from '../utils/clock.js';
 
 /**
  * A scheduled callback the test controls. Timers fire in the order they were
@@ -14,12 +16,10 @@ interface FakeTimer {
   fired: boolean;
 }
 
-/** Test rig exposing the engine plus manual control of time and randomness. */
+/** Test rig exposing the wired app plus manual control of time and randomness. */
 export interface Harness {
   store: Store;
-  dialer: Dialer;
-  /** Exposed so CRM behaviour can be tested directly, not only via the dialer. */
-  crm: CrmDeps;
+  ctx: AppContext;
   sessionId: string;
   /**
    * Resolves the next ringing call.
@@ -52,11 +52,11 @@ export const ROLL = {
 } as const;
 
 /**
- * Builds a dialer wired to fake time, ids, and randomness.
+ * Builds the app wired to fake time, ids, and randomness.
  *
- * `randoms` is consumed in call order: one value per dial (ring duration),
- * then one per resolved call (outcome). Running out throws rather than
- * silently repeating, so a miscounted test fails loudly.
+ * `randoms` is consumed in call order: one value per dial (ring duration), then
+ * one per resolved call (outcome). Running out throws rather than silently
+ * repeating, so a miscounted test fails loudly.
  *
  * @param leadIds leads to queue on the session
  * @param randoms the sequence `random()` returns
@@ -68,29 +68,10 @@ export function createHarness(leadIds: string[], randoms: number[]): Harness {
   const crmTimers: FakeTimer[] = [];
   let randomIndex = 0;
   let idCounter = 0;
-  let clock = Date.parse('2026-01-01T09:00:00.000Z');
-
-  const random = (): number => {
-    const value = randoms[randomIndex];
-    if (value === undefined) {
-      throw new Error(`harness ran out of random values at index ${randomIndex}`);
-    }
-    randomIndex += 1;
-    return value;
-  };
-
-  const now = (): string => {
-    clock += 1000;
-    return new Date(clock).toISOString();
-  };
-
-  const id = (): string => {
-    idCounter += 1;
-    return String(idCounter);
-  };
+  let clockMs = Date.parse('2026-01-01T09:00:00.000Z');
 
   /**
-   * Pushes a timer onto one of the two queues.
+   * Appends a timer to one of the two queues.
    *
    * @param queue the queue to append to
    * @param fn the callback
@@ -119,27 +100,40 @@ export function createHarness(leadIds: string[], randoms: number[]): Harness {
     return true;
   };
 
-  const crm: CrmDeps = {
-    store,
-    now,
-    id,
-    schedule: (fn, ms) => {
-      push(crmTimers, fn, ms);
+  /** Time, ids, and randomness — shared; only the queue differs. */
+  const base = {
+    now: (): string => {
+      clockMs += 1000;
+      return new Date(clockMs).toISOString();
     },
-    latencyMs: () => 500,
+    id: (): string => {
+      idCounter += 1;
+      return String(idCounter);
+    },
+    random: (): number => {
+      const value = randoms[randomIndex];
+      if (value === undefined) {
+        throw new Error(`harness ran out of random values at index ${randomIndex}`);
+      }
+      randomIndex += 1;
+      return value;
+    },
   };
 
-  const dialer = createDialer({
-    store,
-    now,
-    id,
-    random,
-    schedule: (fn, ms) => push(callTimers, fn, ms),
-    crm,
-  });
+  // Two clocks, differing only in which queue they schedule onto. Call outcomes
+  // and CRM writes are independent timelines, so a tick must advance exactly
+  // one call — otherwise a CRM write lands between two calls and the tests can
+  // no longer count ticks.
+  const clock: Clock = { ...base, schedule: (fn, ms) => push(callTimers, fn, ms) };
+  const crmClock: Clock = { ...base, schedule: (fn, ms) => push(crmTimers, fn, ms) };
 
-  const session = createSession('session-1', 'agent-1', leadIds);
-  store.sessions.set(session.id, session);
+  // CRM latency is fixed so it consumes no random values, keeping the sequence
+  // in the tests about call outcomes only.
+  const env = loadEnv({ CRM_LATENCY_MIN_MS: '500', CRM_LATENCY_MAX_MS: '500' });
+
+  const ctx = createContainer(env, { store, clock, crmClock });
+
+  const session = ctx.sessions.create('session-1', 'agent-1', leadIds);
 
   const tick = (): boolean => fireNext(callTimers);
 
@@ -152,8 +146,7 @@ export function createHarness(leadIds: string[], randoms: number[]): Harness {
 
   return {
     store,
-    dialer,
-    crm,
+    ctx,
     sessionId: session.id,
     tick,
     flushCrm,

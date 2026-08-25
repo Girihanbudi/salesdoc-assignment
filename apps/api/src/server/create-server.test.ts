@@ -1,6 +1,20 @@
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { buildApp } from './app.js';
+import { ERR } from '../constant/error-codes.js';
+import { loadEnv } from '../constant/env.js';
+import { createContainer } from '../container.js';
+import { createServer } from './create-server.js';
+
+/**
+ * Boots the app the way production does, minus listening.
+ *
+ * @param options optional web root to serve and whether to mount Swagger
+ * @returns the Fastify instance, ready for `inject()`
+ */
+async function buildApp(options: { webRoot?: string; docs?: boolean } = {}) {
+  const env = loadEnv({ WEB_ROOT: options.webRoot });
+  return createServer(createContainer(env), env, { docs: options.docs === true });
+}
 
 describe('POST /api/sessions', () => {
   it('rejects a body whose leadIds is not an array', async () => {
@@ -15,7 +29,7 @@ describe('POST /api/sessions', () => {
     expect(res.json().error.code).toBe('VALIDATION_FAILED');
   });
 
-  it('rejects an empty selection', async () => {
+  it('rejects an empty selection, naming the field that failed', async () => {
     const app = await buildApp();
     const res = await app.inject({
       method: 'POST',
@@ -24,6 +38,12 @@ describe('POST /api/sessions', () => {
     });
 
     expect(res.statusCode).toBe(400);
+    // The path is the point: a bare message cannot tell the UI which input to
+    // mark, so losing it makes the error useless to the client.
+    expect(res.json().error.details).toContainEqual({
+      path: 'leadIds',
+      message: 'Select at least one lead',
+    });
   });
 
   it('rejects a lead that does not exist', async () => {
@@ -35,7 +55,7 @@ describe('POST /api/sessions', () => {
     });
 
     expect(res.statusCode).toBe(400);
-    expect(res.json().error.code).toBe('UNKNOWN_LEAD');
+    expect(res.json().error.code).toBe(ERR.LEAD.UNKNOWN);
   });
 
   it('creates a session queued with the selected leads', async () => {
@@ -64,7 +84,7 @@ describe('unknown resources', () => {
     const res = await app.inject({ method: 'GET', url: '/api/sessions/nope' });
 
     expect(res.statusCode).toBe(404);
-    expect(res.json().error.code).toBe('NOT_FOUND');
+    expect(res.json().error.code).toBe(ERR.SESSION.NOT_FOUND);
   });
 
   it('404s crm-activities for an unknown lead', async () => {
@@ -92,7 +112,7 @@ describe('ending a call', () => {
     });
 
     expect(res.statusCode).toBe(409);
-    expect(res.json().error.code).toBe('NOT_ACTIVE');
+    expect(res.json().error.code).toBe(ERR.CALL.NOT_ACTIVE);
   });
 
   it('rejects a disposition outside the allowed set', async () => {
@@ -142,7 +162,7 @@ describe('serving the frontend', () => {
   // once Swagger was added: swagger-ui registers @fastify/static internally, so
   // our later registration lost, and every asset fell through to the SPA
   // fallback — 404s carrying index.html, which renders a blank page.
-  const webRoot = resolve(import.meta.dirname, '../../web/dist');
+  const webRoot = resolve(import.meta.dirname, '../../../web/dist');
 
   it('serves index.html at the root with a 200', async () => {
     const app = await buildApp({ webRoot, docs: true });

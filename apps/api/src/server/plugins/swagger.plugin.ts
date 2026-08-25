@@ -10,7 +10,7 @@ import type { FastifyInstance } from 'fastify';
  *
  * @param app the Fastify instance to document
  */
-export async function registerDocs(app: FastifyInstance): Promise<void> {
+export async function registerSwagger(app: FastifyInstance): Promise<void> {
   await app.register(swagger, {
     openapi: {
       info: {

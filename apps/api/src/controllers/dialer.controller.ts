@@ -1,45 +1,36 @@
 import {
   CONCURRENCY,
   type Call,
-  type Disposition,
   type DialerSession,
+  type Disposition,
   type TerminalCallStatus,
 } from '@salesdoc/shared';
-import { syncToCrm, type CrmDeps } from './crm.js';
-import type { Store } from './store.js';
+import {
+  STOPPED_MID_CALL_DISPOSITION,
+  STOPPED_MID_CALL_NOTES,
+} from '../constant/crm.js';
+import { OUTCOME_WEIGHTS } from '../constant/dialer.js';
+import type { CallsRepository } from '../repositories/calls.repository.js';
+import type { SessionsRepository } from '../repositories/sessions.repository.js';
+import type { Clock } from '../utils/clock.js';
+import type { CrmSyncController } from './crm-sync.controller.js';
 
-/**
- * Injected seams. Every source of nondeterminism in the engine goes through
- * one of these so tests can drive the machine with a fake clock, a seeded
- * random, and a manual timer queue.
- */
-export interface DialerDeps {
-  store: Store;
-  now: () => string;
-  id: () => string;
-  random: () => number;
-  /** Returns a cancel function so a losing line's pending outcome can be dropped. */
-  schedule: (fn: () => void, ms: number) => () => void;
-  crm: CrmDeps;
+/** How long a mocked call rings before its outcome lands. */
+export interface RingWindow {
+  minMs: number;
+  maxMs: number;
 }
 
-/**
- * Mocked outcome distribution. Weights are cumulative over `random()`.
- *
- * There is no telephony in this project — the brief asks for mocked calls —
- * so this stands in for what a provider would report.
- */
-const OUTCOMES: readonly { status: TerminalCallStatus; weight: number }[] = [
-  { status: 'CONNECTED', weight: 0.35 },
-  { status: 'NO_ANSWER', weight: 0.3 },
-  { status: 'VOICEMAIL', weight: 0.2 },
-  { status: 'BUSY', weight: 0.15 },
-];
+/** What {@link createDialer} needs to do its job. */
+export interface DialerDeps {
+  sessions: SessionsRepository;
+  calls: CallsRepository;
+  crmSync: CrmSyncController;
+  clock: Clock;
+  ring: RingWindow;
+}
 
-const RING_MIN_MS = 2000;
-const RING_MAX_MS = 6000;
-
-/** Drives one dialer session's lifecycle. */
+/** Drives every dialer session's lifecycle. */
 export interface Dialer {
   /** Begins dialing. Idempotent — starting a RUNNING session does nothing. */
   start: (sessionId: string) => void;
@@ -54,9 +45,13 @@ export interface Dialer {
 }
 
 /**
- * Creates the dialer engine.
+ * Builds the dialer engine — the state machine the whole assignment rests on.
  *
- * @param deps injected store, clock, randomness, scheduler, and CRM
+ * Knows nothing about HTTP. Every nondeterministic input arrives through
+ * `clock`, which is what lets the tests assert "line 1 connects, line 2 is
+ * cancelled" exactly, with no sleeping.
+ *
+ * @param deps repositories, the clock, CRM sync, and the ring window
  * @returns the engine's public operations
  */
 export function createDialer(deps: DialerDeps): Dialer {
@@ -69,8 +64,8 @@ export function createDialer(deps: DialerDeps): Dialer {
    * @returns the status the call will land on
    */
   function rollOutcome(): TerminalCallStatus {
-    let roll = deps.random();
-    for (const outcome of OUTCOMES) {
+    let roll = deps.clock.random();
+    for (const outcome of OUTCOME_WEIGHTS) {
       if (roll < outcome.weight) return outcome.status;
       roll -= outcome.weight;
     }
@@ -82,11 +77,10 @@ export function createDialer(deps: DialerDeps): Dialer {
    * Applies a terminal status to a call, updates metrics, and frees its line.
    *
    * CRM sync happens here for every outcome *except* CONNECTED. A connected
-   * call is not finished from the CRM's point of view until the agent has
-   * hung up and chosen a disposition, so its sync is deferred to
-   * {@link Dialer.endCall}. Syncing on connect would burn the callId
-   * idempotency key against a placeholder disposition and silently discard
-   * the agent's real one.
+   * call is not finished from the CRM's point of view until the agent has hung
+   * up and chosen a disposition, so its sync is deferred to {@link Dialer.endCall}.
+   * Syncing on connect would burn the callId idempotency key against a
+   * placeholder and silently discard the agent's real disposition.
    *
    * @param session the owning session
    * @param call the call to terminate
@@ -101,8 +95,8 @@ export function createDialer(deps: DialerDeps): Dialer {
     pending.delete(call.id);
 
     call.status = status;
-    call.endedAt = deps.now();
-    deps.store.calls.set(call.id, call);
+    call.endedAt = deps.clock.now();
+    deps.calls.save(call);
 
     session.activeCallIds = session.activeCallIds.filter((id) => id !== call.id);
 
@@ -110,7 +104,7 @@ export function createDialer(deps: DialerDeps): Dialer {
     else if (status === 'CANCELED_BY_DIALER') session.metrics.canceled += 1;
     else session.metrics.failed += 1;
 
-    if (status !== 'CONNECTED') syncToCrm(deps.crm, call);
+    if (status !== 'CONNECTED') deps.crmSync.sync(call);
   }
 
   /**
@@ -120,8 +114,8 @@ export function createDialer(deps: DialerDeps): Dialer {
    * @param callId the call whose outcome has arrived
    */
   function resolveCall(sessionId: string, callId: string): void {
-    const session = deps.store.sessions.get(sessionId);
-    const call = deps.store.calls.get(callId);
+    const session = deps.sessions.findById(sessionId);
+    const call = deps.calls.findById(callId);
     if (!session || !call || call.status !== 'DIALING') return;
 
     const status = rollOutcome();
@@ -133,7 +127,7 @@ export function createDialer(deps: DialerDeps): Dialer {
       terminate(session, call, 'CONNECTED');
 
       for (const otherId of [...session.activeCallIds]) {
-        const other = deps.store.calls.get(otherId);
+        const other = deps.calls.findById(otherId);
         if (other && other.status === 'DIALING') {
           terminate(session, other, 'CANCELED_BY_DIALER');
         }
@@ -142,7 +136,7 @@ export function createDialer(deps: DialerDeps): Dialer {
       terminate(session, call, status);
     }
 
-    deps.store.sessions.set(sessionId, session);
+    deps.sessions.save(session);
     fillLines(sessionId);
   }
 
@@ -153,7 +147,7 @@ export function createDialer(deps: DialerDeps): Dialer {
    * @param sessionId the session to top up
    */
   function fillLines(sessionId: string): void {
-    const session = deps.store.sessions.get(sessionId);
+    const session = deps.sessions.findById(sessionId);
     if (!session || session.status !== 'RUNNING') return;
 
     // While a winner holds the agent, the queue waits — dialing more would
@@ -167,23 +161,24 @@ export function createDialer(deps: DialerDeps): Dialer {
       if (leadId === undefined) break;
 
       const call: Call = {
-        id: `call-${deps.id()}`,
+        id: `call-${deps.clock.id()}`,
         leadId,
         sessionId,
         status: 'DIALING',
-        startedAt: deps.now(),
+        startedAt: deps.clock.now(),
         endedAt: null,
-        providerCallId: `mock_${deps.id()}`,
+        providerCallId: `mock_${deps.clock.id()}`,
       };
 
-      deps.store.calls.set(call.id, call);
+      deps.calls.save(call);
       session.activeCallIds.push(call.id);
       session.metrics.attempted += 1;
 
-      const ringMs = RING_MIN_MS + deps.random() * (RING_MAX_MS - RING_MIN_MS);
+      const ringMs =
+        deps.ring.minMs + deps.clock.random() * (deps.ring.maxMs - deps.ring.minMs);
       pending.set(
         call.id,
-        deps.schedule(() => resolveCall(sessionId, call.id), ringMs)
+        deps.clock.schedule(() => resolveCall(sessionId, call.id), ringMs)
       );
     }
 
@@ -195,25 +190,25 @@ export function createDialer(deps: DialerDeps): Dialer {
       session.status = 'STOPPED';
     }
 
-    deps.store.sessions.set(sessionId, session);
+    deps.sessions.save(session);
   }
 
   return {
     start(sessionId) {
-      const session = deps.store.sessions.get(sessionId);
+      const session = deps.sessions.findById(sessionId);
       if (!session || session.status === 'RUNNING') return;
       session.status = 'RUNNING';
-      deps.store.sessions.set(sessionId, session);
+      deps.sessions.save(session);
       fillLines(sessionId);
     },
 
     stop(sessionId) {
-      const session = deps.store.sessions.get(sessionId);
+      const session = deps.sessions.findById(sessionId);
       if (!session) return;
 
       // Copy: terminate() splices activeCallIds as it goes.
       for (const callId of [...session.activeCallIds]) {
-        const call = deps.store.calls.get(callId);
+        const call = deps.calls.findById(callId);
         if (call && call.status === 'DIALING') {
           terminate(session, call, 'CANCELED_BY_DIALER');
         }
@@ -223,30 +218,30 @@ export function createDialer(deps: DialerDeps): Dialer {
       // CRM sync is still owed. Record it rather than losing the conversation.
       const winnerId = session.winnerCallId;
       if (winnerId !== null) {
-        const winner = deps.store.calls.get(winnerId);
+        const winner = deps.calls.findById(winnerId);
         if (winner) {
-          syncToCrm(deps.crm, winner, {
-            disposition: 'CALLBACK',
-            notes: 'Session stopped while the call was connected; no disposition recorded.',
+          deps.crmSync.sync(winner, {
+            disposition: STOPPED_MID_CALL_DISPOSITION,
+            notes: STOPPED_MID_CALL_NOTES,
           });
         }
       }
 
       session.winnerCallId = null;
       session.status = 'STOPPED';
-      deps.store.sessions.set(sessionId, session);
+      deps.sessions.save(session);
     },
 
     endCall(sessionId, callId, outcome) {
-      const session = deps.store.sessions.get(sessionId);
-      const call = deps.store.calls.get(callId);
+      const session = deps.sessions.findById(sessionId);
+      const call = deps.calls.findById(callId);
       if (!session || !call || session.winnerCallId !== callId) return;
 
       // The call already reached CONNECTED when it was answered. Its CRM sync
       // was deliberately deferred to here, where the agent's disposition exists.
-      syncToCrm(deps.crm, call, outcome);
+      deps.crmSync.sync(call, outcome);
       session.winnerCallId = null;
-      deps.store.sessions.set(sessionId, session);
+      deps.sessions.save(session);
 
       fillLines(sessionId);
     },

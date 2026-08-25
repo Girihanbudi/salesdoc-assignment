@@ -86,6 +86,65 @@ violations bounce back through the existing hook automatically.
 Document *why*, not *what*. `// increment i` is noise; a note about why the
 retry is capped at 3 is not.
 
+## Server layering — `apps/api/src/`
+
+One direction only. A lower layer never imports an upper one.
+
+```
+routes ──▶ handlers ──▶ controllers ──▶ repositories ──▶ db/store
+  │            │             │
+  │            │             └──────▶ mocks (via an injected client)
+  │            └─────────────┴──────▶ utils, constant, types
+  └─ schema: zod from @salesdoc/shared, validated BEFORE the handler runs
+```
+
+| Folder | Holds | Must never |
+|---|---|---|
+| `routes/` | uri, schema, handler reference | contain logic |
+| `handlers/` | HTTP in, HTTP out | parse, query, or decide |
+| `controllers/` | every business decision | touch `request`/`reply`/status codes |
+| `repositories/` | every read and write | contain rules |
+| `db/` | the Maps and the seed | contain queries |
+| `mocks/` | stand-ins for external systems | be imported outside a controller |
+| `constant/` | **every** constant, and env parsing | import from a layer above |
+| `utils/` | cross-cutting helpers | know about the domain |
+| `types/` | shared local types (`AppContext`) | duplicate `@salesdoc/shared` |
+
+`container.ts` is the composition root — the only place that knows how the
+pieces connect. `db/store.ts` may only be imported by `repositories/`.
+
+Two greppable checks, worth running after any change in `apps/api/`:
+
+```bash
+# Only repositories may reach the store. (container + test harness wire it.)
+grep -rn "db/store" src/ --include=*.ts \
+  | grep -vE "^src/(repositories|db|test)/|^src/container.ts"
+
+# No raw Map iteration outside the data layer.
+grep -rn "\.values()\|\.entries()" src/ --include=*.ts \
+  | grep -vE "^src/(repositories|db)/|\.test\.ts:"
+```
+
+Tests are exempt from the second rule on purpose: asserting against the store
+directly is how a test proves what was *actually persisted*. Reading through
+the repository would make the test trust the layer it is testing.
+
+### Where things go — the rules that keep getting broken
+
+- **Constants live in `constant/`.** Not at the top of the file that happens to
+  use them. A lookup table, a weight, a default string: `constant/`.
+  Exception: a value used once, inside one function, that is meaningless
+  elsewhere.
+- **Name every parameter object.** A factory or controller taking a `deps`
+  object declares an exported `interface XxxDeps`; never an inline
+  `{ a: A; b: B }` in the signature. Inline shapes cannot be referenced by a
+  caller or a test, and they hide growth.
+- **Validation splits by what it needs.** Shape (no state) → route schema.
+  Anything needing a repository → controller, throwing `AppError`. There is no
+  `validators/` folder; a third home invites drift.
+- **Errors are thrown, never constructed as responses.** Throw `AppError`;
+  `server/error-handler.ts` is the only place that builds an error body.
+
 ## Commit messages — Conventional Commits
 
 Every commit subject starts with a type prefix, per
