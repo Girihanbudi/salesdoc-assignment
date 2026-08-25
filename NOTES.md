@@ -82,24 +82,77 @@ still files as `CONNECTED`, with a note saying it was cut short.
 
 ## What I'd do next
 
-1. SSE for the winner reveal — polling adds up to 1.5s of dead air on the one
-   event that matters.
-2. Postgres behind the `Store` interface, so a redeploy doesn't erase history.
-3. A real telephony provider behind the existing `schedule`/`random` seams —
-   the state machine does not know its outcomes are fake.
-4. Playwright E2E for the full browser path; the current suite stops at the
-   API boundary and one component smoke test.
-5. Auth and per-agent sessions.
-6. Retry with backoff on CRM sync. The `failed` state exists and is rendered,
-   but nothing currently retries it.
-7. **An agent wrap-up screen.** The brief writes disposition and notes
+Grouped by what actually blocks a real deployment, rather than by effort.
+
+### Blocks going live at all
+
+1. **A real queue.** The lead queue is an array on the session object and the
+   scheduler is `setTimeout`. Nothing survives a restart, nothing retries, and
+   nothing can be shared across two instances — so the app cannot scale past
+   one process, and a deploy mid-session drops every call in flight. A durable
+   queue (BullMQ/Redis, SQS) is the single largest gap between this and
+   production, and it is the piece the V2 exercise is mostly about.
+2. **Abandoned-call compliance.** Every losing line is a real person who picked
+   up and got hung up on. The US FCC caps that rate at 3% and requires a
+   recorded message; other jurisdictions are similar. This dials two for one
+   agent and abandons the loser in silence — fine for mocked calls, illegal for
+   real ones. A production build needs abandonment tracking, a hard rate cap
+   that throttles dialing when it is approached, and an abandon message. It is
+   also the exact pressure the V2 design relieves by putting an AI agent on the
+   losing line instead of dead air.
+3. **Postgres behind the `Store` interface**, so a redeploy stops erasing
+   history. The repositories already have the signatures.
+4. **Auth, and agent identity that means something.** Every request is
+   `agent-1` today. Sessions need an owner before two people can use this at
+   once, and the one-session-per-agent rule is only enforceable once an agent
+   is authenticated rather than asserted in a request body.
+
+### Makes it a product rather than a demo
+
+5. **Lead ingestion.** Six leads are seeded in code. Real use needs CSV import
+   with a column mapper and a dry-run, and a pull from whatever system owns the
+   leads. The brief's own framing — a CRM as the system of record — points at
+   sync rather than upload as the eventual answer.
+6. **Multi-agent, not multi-session.** Creating a second session for an agent
+   is refused on purpose: one person cannot hold two conversations, and no
+   account tier changes that. What scales is *agents*, each with one session,
+   plus a supervisor view across them. That is where a plan/entitlement schema
+   belongs — seats, concurrency budget per team, who may watch whom — and it
+   needs (4) first.
+7. **A real telephony provider** behind the existing `schedule`/`random` seams.
+   The state machine does not know its outcomes are mocked, which is what makes
+   this a swap rather than a rewrite.
+8. **An agent wrap-up screen.** The brief writes disposition and notes
    automatically from the call outcome, so that is what this does — every
    connected call is filed as `CONNECTED` with a generated note. A real dialer
-   would stop the conversation on a form where the agent picks
-   `INTERESTED` / `NOT_INTERESTED` / `CALLBACK` and types what was agreed.
-   Those values are already in the `Disposition` enum for that reason. I built
-   this at one point and removed it: it is not in the brief, and a third
-   deviation on graded work is not worth a feature nobody asked for.
+   would end the conversation on a form where the agent picks
+   `INTERESTED` / `NOT_INTERESTED` / `CALLBACK` and types what was agreed;
+   those values are already in the `Disposition` enum for exactly that reason.
+   I built this and removed it: it is not in the brief, and a third deviation
+   on graded work is not worth a feature nobody asked for.
+
+### Quality gaps I know about
+
+9. **Focus management on route change.** Landmarks, `aria-current`,
+   `aria-live` on the snackbar, `aria-modal` on the mobile sheet and accessible
+   names on every icon-only control are all in place — but navigating moves the
+   scroll position without moving focus, so a screen-reader user is left in the
+   previous page's tree. That is a real WCAG failure and the largest remaining
+   accessibility gap. A skip link and an audit against a real screen reader
+   should follow.
+
+   Worth saying plainly: none of this is for SEO. The app sits behind auth and
+   will never be indexed. It matters because an agent on calls all day is
+   precisely the user who navigates by keyboard.
+10. **SSE for the winner reveal.** Polling adds up to 1.5s of dead air on the
+    one event that matters, and the poll now stops when a session ends, which
+    is a workaround for the cost of polling rather than a fix.
+11. **Retry with backoff on CRM sync.** The `failed` state exists, is rendered,
+    and now raises a warning — but nothing retries it.
+12. **Playwright E2E.** The suite stops at the API boundary and component
+    level. Twice now a bug reached the container that every test passed
+    through: the frontend silently not being served, and `npm run dev` failing
+    to boot.
 
 ## How I used AI tools, and what I verified
 
