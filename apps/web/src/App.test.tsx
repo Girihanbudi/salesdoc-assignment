@@ -419,3 +419,86 @@ describe('active section marker', () => {
     );
   });
 });
+
+describe('session finished toast', () => {
+  /**
+   * A finished session whose calls did or did not reach the CRM.
+   *
+   * @param crmSyncStatus what the one call's CRM write ended as
+   * @returns the session view payload
+   */
+  function finishedWith(crmSyncStatus: 'synced' | 'failed') {
+    const call = {
+      call: {
+        id: 'call-1',
+        leadId: 'lead-1',
+        sessionId: 'session-abc',
+        status: 'NO_ANSWER',
+        startedAt: new Date().toISOString(),
+        endedAt: new Date().toISOString(),
+        providerCallId: 'mock_1',
+      },
+      lead: LEADS[0],
+      crmSyncStatus,
+    };
+
+    return {
+      ...SESSION_VIEW,
+      session: {
+        ...SESSION_VIEW.session,
+        status: 'RUNNING',
+        metrics: { attempted: 1, connected: 0, failed: 1, canceled: 0 },
+      },
+      history: [call],
+    };
+  }
+
+  /**
+   * Serves RUNNING once, then STOPPED, so the finish edge actually fires.
+   *
+   * @param crmSyncStatus what the call's CRM write ended as
+   * @returns a fetch stub
+   */
+  function stubFinishing(crmSyncStatus: 'synced' | 'failed') {
+    let polls = 0;
+    return vi.fn((url: string) => {
+      if (url.includes('/api/sessions/')) {
+        const view = finishedWith(crmSyncStatus);
+        polls += 1;
+        return Promise.resolve(
+          enveloped(
+            polls === 1 ? view : { ...view, session: { ...view.session, status: 'STOPPED' } }
+          )
+        );
+      }
+      return Promise.resolve(enveloped(LEADS));
+    });
+  }
+
+  it('reports success when every call reached the CRM', async () => {
+    vi.stubGlobal('fetch', stubFinishing('synced'));
+    renderAt('/dial?session=session-abc');
+
+    // The edge only fires on the second poll, 1.5s in — past the default
+    // query timeout.
+    expect(await screen.findByText('Session finished', {}, { timeout: 5000 })).toBeInTheDocument();
+    expect(screen.getByText(/every call reached the CRM/i)).toBeInTheDocument();
+    expect(screen.getByText('Success:')).toBeInTheDocument();
+  });
+
+  it('reports a warning when a write never landed', async () => {
+    // A green "all done" beside a warning that writes failed would contradict
+    // itself, so the finish toast carries the bad news instead.
+    vi.stubGlobal('fetch', stubFinishing('failed'));
+    renderAt('/dial?session=session-abc');
+
+    const title = await screen.findByText('Session finished', {}, { timeout: 5000 });
+
+    // Scoped to this toast: a separate warning fires the moment a write fails
+    // mid-run, and it says something similar. Both are wanted — one is timely,
+    // this one is the summary.
+    const toast = title.closest('[class*="rounded"]')?.parentElement;
+    expect(toast?.textContent).toMatch(/did not reach the CRM/i);
+    expect(screen.queryByText('Success:')).not.toBeInTheDocument();
+  });
+});

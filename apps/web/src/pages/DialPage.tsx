@@ -78,10 +78,18 @@ export function DialPage({
 
     if (wasRunning.current && !running) {
       const { attempted, connected } = view.session.metrics;
+
+      // Green only when nothing went wrong. A separate warning already says
+      // some writes never landed, and a green "all done" beside it would
+      // contradict itself — so a session with failures reports as one.
+      const failedWrites = view.history.filter((l) => l.crmSyncStatus === 'failed').length;
+
       toasts.push(
-        'info',
+        failedWrites > 0 ? 'warning' : 'success',
         'Session finished',
-        `${String(attempted)} attempted · ${String(connected)} connected. Polling stopped.`
+        failedWrites > 0
+          ? `${String(attempted)} attempted · ${String(failedWrites)} did not reach the CRM.`
+          : `${String(attempted)} attempted · ${String(connected)} connected. Every call reached the CRM.`
       );
     }
     wasRunning.current = running;
