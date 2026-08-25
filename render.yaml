@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: salesdoc-dialer
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: free
+    region: singapore
+    healthCheckPath: /api/health
+    # CI owns deploys (see .github/workflows/check.yml on the ci branch) so only
+    # a green commit ships. Leaving this on would deploy every push in parallel
+    # with CI and make the gate decorative.
+    autoDeploy: false
+    envVars:
+      - key: NODE_ENV
+        value: production

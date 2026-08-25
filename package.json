@@ -1,0 +1,32 @@
+{
+  "name": "salesdoc-dialer",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "2-line multi-line dialer with a mock CRM. Take-home assignment.",
+  "engines": {
+    "node": ">=22"
+  },
+  "workspaces": [
+    "packages/shared",
+    "apps/server",
+    "apps/web"
+  ],
+  "scripts": {
+    "dev": "concurrently -n api,web -c blue,green \"npm -w apps/server run dev\" \"npm -w apps/web run dev\"",
+    "build": "npm -w packages/shared run build && npm -w apps/web run build && npm -w apps/server run build",
+    "start": "node apps/server/dist/index.js",
+    "test": "vitest",
+    "lint": "eslint .",
+    "typecheck": "tsc --build"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.17.0",
+    "concurrently": "^9.1.0",
+    "eslint": "^9.17.0",
+    "eslint-plugin-jsdoc": "^50.6.1",
+    "typescript": "^5.7.2",
+    "typescript-eslint": "^8.18.1",
+    "vitest": "^4.1.11"
+  }
+}

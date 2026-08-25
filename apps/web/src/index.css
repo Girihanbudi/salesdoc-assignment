@@ -1,0 +1,51 @@
+@import 'tailwindcss';
+
+/* Design tokens — mirrors the Monetra finance-dashboard reference.
+   Light-only by design: the reference has no dark variant, and inventing one
+   is speculative work. See NOTES.md. */
+@theme {
+  --color-bg: #edeef0;
+  --color-card: #ffffff;
+  --color-ink: #0b0b0c;
+  --color-muted: #8a8f98;
+  --color-line: #e7e8ea;
+
+  --color-accent: #b4eE3b;
+  --color-accent-ink: #0b0b0c;
+
+  --color-pos: #2fbf4e;
+  --color-neg: #ff4438;
+
+  --radius-card: 24px;
+  --radius-tile: 16px;
+
+  --shadow-card: 0 1px 2px rgb(11 11 12 / 0.04), 0 8px 24px rgb(11 11 12 / 0.06);
+
+  --font-sans: 'Inter', ui-sans-serif, system-ui, sans-serif;
+}
+
+@layer base {
+  body {
+    background-color: var(--color-bg);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  h1,
+  h2,
+  h3 {
+    letter-spacing: -0.02em;
+  }
+
+  /* Metrics must not jitter as digits change during polling. */
+  .tnum {
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Focus must stay visible on a light background. */
+  :focus-visible {
+    outline: 2px solid var(--color-ink);
+    outline-offset: 2px;
+  }
+}

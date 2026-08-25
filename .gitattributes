@@ -1,0 +1,8 @@
+# Authored on Windows, Render builds on Linux. Normalize to LF in the repo so
+# line endings never show up as phantom whole-file diffs.
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary
+*.ico binary
+*.woff2 binary

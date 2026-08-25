@@ -1,0 +1,23 @@
+# Assignment source material — not ours to publish.
+docs/
+
+# Secrets — never commit. Also denied to Claude in .claude/settings.json.
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Personal Claude Code overrides — settings.json IS committed, this is not.
+.claude/settings.local.json
+
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+
+# Editors / OS
+.DS_Store
+Thumbs.db
+.idea/
+*.swp

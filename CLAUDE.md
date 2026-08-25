@@ -1,0 +1,109 @@
+# Project rules
+
+## What this is
+
+A 2-line **multi-line dialer** + mock CRM. One agent, two simultaneous calls;
+the first to connect is the *winner* and takes the agent, the other is hung up
+as `CANCELED_BY_DIALER`. Every terminal call writes an idempotent CRM activity.
+
+Call outcomes are **mocked** — there is no telephony, no SIP, no Twilio. The
+substance is the concurrency-bounded state machine and the idempotent write-behind.
+
+`apps/server/src/dialer.ts` is the only genuinely interesting file. The rest is
+plumbing around it. Read it before changing anything that touches calls.
+
+## Stack & layout
+
+- Language / runtime: TypeScript on **Node 22** (pinned in `package.json` → `engines`)
+- Package manager: **npm workspaces** — use only this one. Never mix lockfiles.
+- Frontend: `apps/web/` — Vite + React 19 + Tailwind 4 (dev port **5173**)
+- Backend: `apps/server/` — Fastify 5 (dev port **3000**)
+- Shared: `packages/shared/` — zod schemas + inferred types, imported by both
+- Database: **none**. In-memory `Map`s in `apps/server/src/store.ts`, seeded on
+  boot. State resets on restart — that is expected and documented in NOTES.md.
+
+In production a single Fastify process serves the API *and* `apps/web/dist`, on
+one port. In dev they are two processes and Vite proxies `/api` + `/mock-crm`
+to 3000. Same-origin in both, so there is no CORS anywhere and no base-URL env var.
+
+### Commands
+
+- All tests: `npm test`
+- **Single test file: `npm test -- dialer`** — use this while iterating, not the full suite
+- Lint / format: `npm run lint`
+- Type check: `npm run typecheck`
+- Dev (both apps): `npm run dev`
+- Production build + run: `npm run build && npm start`
+
+### Conventions
+
+- Import style: alias `@/` → that package's `src/`. Cross-package imports go
+  through the workspace name (`@salesdoc/shared`), never a deep relative path.
+  No `../../..` chains.
+- Env vars: none required to run locally. `PORT` and `NODE_ENV` are read in
+  production only. Never read or print `.env` — ask me for a value instead.
+
+### Spec fidelity — this is graded work
+
+The field names in `packages/shared/src/schemas.ts` mirror the assignment brief
+1:1. Do not rename, "improve", or add fields to the four spec'd models
+(`Lead`, `Call`, `DialerSession`, `CRMActivity`) without saying so explicitly —
+a grader diffs these against the brief.
+
+Two deliberate deviations, already agreed, both documented in NOTES.md:
+1. `CallStatus` gains a non-terminal `DIALING`. The brief's five values remain
+   the only **terminal** ones, and only terminal calls sync to CRM.
+2. CRM sync carries ~300-800ms simulated latency so the required per-call
+   "CRM activity creation status" actually renders `pending` before `synced`.
+
+## Workflow — backend logic
+
+Non-negotiable order. Do not skip to step 3.
+
+1. **List the test scenarios first**, in plain text, before writing any code:
+   happy path, each boundary, each error, unauthorized. Show the list.
+2. **Write the failing test.** Run it. Confirm it fails for the right reason.
+3. **Write the implementation** — the least code that passes.
+
+Lint and type checks run automatically on every file you write. Fix what comes
+back; do not work around it.
+
+CI lands on a separate branch and runs the exact same gate —
+`node .claude/scripts/check.mjs --full`. If a check needs to change, change it
+there, not in the workflow file. Never add a CI-only step that can't be run
+locally.
+
+## Documentation
+
+Every exported/public function, type, and route handler gets a doc comment in
+this language's convention (JSDoc, docstring, godoc, rustdoc, …) covering
+parameters and return value.
+
+Enforce it through the linter rather than by asking — configure the rule
+(`jsdoc/require-jsdoc`, ruff `D`, `revive exported`, `missing_docs`) and
+violations bounce back through the existing hook automatically.
+
+Document *why*, not *what*. `// increment i` is noise; a note about why the
+retry is capped at 3 is not.
+
+## Always
+
+- Validate and narrow input at every API boundary. Never trust a request body.
+- Never log secrets, tokens, or full request bodies containing credentials.
+- Ask before adding a dependency. Say what it replaces and why hand-rolling loses.
+- Errors from the API use one envelope shape. Match the existing one.
+
+## Never
+
+- No abstraction for a single caller. No interface with one implementation.
+- No barrel / re-export aggregation files.
+- No new README, CHANGELOG, or docs file unless asked.
+- No committing or pushing unless asked. Never push to `main`; open a PR.
+
+## Working style
+
+Read the code the change touches before editing it. Trace the actual call path.
+The smallest diff in the wrong place is a second bug.
+
+When a fix has multiple callers, fix it once in the shared function — not once
+per caller.
